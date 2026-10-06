@@ -50,8 +50,9 @@ class ElenInterface(ServiceInterface):
         return True
 
     @method()
-    def Confirm(self, conf_id: "s", approved: "b", arguments_json: "s", reason: "s") -> "b":
-        return self.core.resolve_confirmation(conf_id, approved, arguments_json, reason)
+    def Confirm(self, conf_id: "s", approved: "b", arguments_json: "s", reason: "s", remember: "b") -> "b":
+        """Answer an approval. remember = "don't ask again" for this kind of action."""
+        return self.core.resolve_confirmation(conf_id, approved, arguments_json, reason, remember)
 
     @method()
     def PendingConfirmations(self) -> "s":

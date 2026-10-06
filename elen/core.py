@@ -34,7 +34,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .config import config_dir, data_dir, deep_merge, load_config
-from .guard import Confirmation, Guard
+from .guard import AllowRules, Confirmation, Guard
 from .history import History
 from .llm import LLMError, ToolCall, make_provider
 from .plugins import Plugin, PluginContext, ToolResult, ToolSpec, tool
@@ -118,6 +118,30 @@ class UIPlugin(Plugin):
         return {"hidden": True}
 
 
+class PermissionsPlugin(Plugin):
+    """List and remove "don't ask again" rules. Only the user can add them (approval dialog)."""
+
+    name = "permissions"
+    description = "Allow rules for actions."
+
+    @tool("List the user's allow rules (actions that run without asking) and show them on screen.")
+    async def list_allow_rules(self):
+        rules = self.ctx.core.allow_rules.rules
+        return ToolResult(
+            data=rules,
+            visual={
+                "type": "list",
+                "title": "Allow rules",
+                "subtitle": f"{len(rules)} actions run without asking",
+                "items": [{"title": r["label"], "meta": r["id"]} for r in rules],
+            },
+        )
+
+    @tool("Remove an allow rule by id, so that action asks for approval again.", params={"id": "string: rule id"}, risk="low")
+    async def remove_allow_rule(self, id: str):
+        return {"removed": self.ctx.core.allow_rules.remove(id)}
+
+
 class Elen:
     def __init__(self, config: dict[str, Any] | None = None):
         self.config = config or load_config()
@@ -150,6 +174,7 @@ class Elen:
             int(cfg["history"]["max_tool_result_chars"]),
         )
         self.guard = Guard(cfg, self.data_dir / "audit.log")
+        self.allow_rules = AllowRules(self.data_dir / "allow_rules.json")
         self.vision = Vision(self.model_config("vision"))
         self.listener = Listener(cfg["stt"])
         self.speaker = Speaker(cfg["tts"])
@@ -265,11 +290,11 @@ class Elen:
         self.tools.clear()
         self.plugin_errors.clear()
         pcfg = self.config.get("plugins", {})
-        classes: dict[str, type[Plugin]] = {"ui": UIPlugin}
+        classes: dict[str, type[Plugin]] = {"ui": UIPlugin, "permissions": PermissionsPlugin}
         classes.update(discover(self.config, config_dir() / "plugins"))
         for name, cls in classes.items():
             section = pcfg.get(name, {}) if isinstance(pcfg.get(name), dict) else {}
-            default_on = name == "ui" or name not in BUILTIN
+            default_on = name in ("ui", "permissions") or name not in BUILTIN
             if not section.get("enabled", default_on):
                 continue
             ctx = PluginContext(core=self, plugin_name=name, data_dir=self.data_dir / "plugins" / name)
@@ -565,11 +590,18 @@ class Elen:
             report, warnings = self.guard.check_recipients(
                 spec, args, self.known_addresses(), user_texts, tool_texts
             )
+            recipient_warnings = list(warnings)
             if tainted:
                 warnings.insert(0, TAINT_WARNING)
             if conflict:
                 ids = ", ".join(conflict["rule_ids"]) or "?"
                 warnings.insert(0, f"RULE CONFLICT (rule {ids}): {conflict['explanation']}")
+            # "Approve and don't ask again": never with a warning about the recipient or a rule.
+            scope = self.guard.allow_scope(spec, args)
+            can_allow = scope is not None and not recipient_warnings and not conflict
+            allow_rule = self.allow_rules.match(spec.full_name, scope) if can_allow else None
+            if allow_rule and tainted and not scope:
+                allow_rule = None  # after outside content, only narrow rules (a domain, a person) apply
             conf = Confirmation(
                 id=uuid.uuid4().hex[:12],
                 tool=spec.full_name,
@@ -580,8 +612,14 @@ class Elen:
                 editable=[e for e in spec.editable if e in props],
                 warnings=warnings,
                 recipients=report,
+                allow_label=self.guard.scope_label(spec, scope) if can_allow else "",
             )
-            decision = await self.request_confirmation(conf)
+            if allow_rule:
+                decision = {"approved": True, "arguments": {}}
+                self.guard.audit("approved_by_allow_rule", tool=spec.full_name, args=args, rule=allow_rule["id"])
+                await self.add_activity("guard", f"✓ Allowed by your rule [{allow_rule['id']}]: {allow_rule['label']}")
+            else:
+                decision = await self.request_confirmation(conf)
             if not decision.get("approved"):
                 self.guard.audit("rejected", tool=spec.full_name, args=args, reason=decision.get("reason"))
                 self.emit("tool", {"name": spec.full_name, "title": spec.title, "status": "rejected"})
@@ -597,6 +635,11 @@ class Elen:
                 if key in edited and edited[key] != args.get(key):
                     args[key] = edited[key]
                     user_edited = True
+            if decision.get("remember") and conf.allow_label:
+                final_scope = self.guard.allow_scope(spec, args) or {}
+                rule = self.allow_rules.add(spec.full_name, final_scope, self.guard.scope_label(spec, final_scope))
+                self.guard.audit("allow_rule_added", rule=rule)
+                await self.add_activity("guard", f"New allow rule [{rule['id']}]: {rule['label']}")
 
         try:
             result = await spec.func(**args)
@@ -712,7 +755,9 @@ class Elen:
     def pending_confirmations(self) -> list[dict[str, Any]]:
         return [c.to_dict() for c, _ in self._pending_confirm.values()]
 
-    def resolve_confirmation(self, conf_id: str, approved: bool, arguments: Any = None, reason: str = "") -> bool:
+    def resolve_confirmation(
+        self, conf_id: str, approved: bool, arguments: Any = None, reason: str = "", remember: bool = False
+    ) -> bool:
         entry = self._pending_confirm.get(conf_id)
         if not entry:
             return False
@@ -723,7 +768,14 @@ class Elen:
             except ValueError:
                 arguments = {}
         if not fut.done():
-            fut.set_result({"approved": bool(approved), "arguments": arguments or {}, "reason": reason})
+            fut.set_result(
+                {
+                    "approved": bool(approved),
+                    "arguments": arguments or {},
+                    "reason": reason,
+                    "remember": bool(remember and approved),
+                }
+            )
         self.emit("confirm_closed", {"id": conf_id, "reason": "approved" if approved else "rejected"})
         return True
 

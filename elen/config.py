@@ -89,6 +89,7 @@ DEFAULTS: dict[str, Any] = {
         "action_claim_check": True,
         "verify_recipients": True,
         "untrusted_content": "confirm",
+        "allow_rules": True,
         "rule_check": "actions",
         "rule_check_replies": True,
         "overrides": {},

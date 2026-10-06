@@ -70,6 +70,7 @@ class SystemPlugin(Plugin):
         "Open an installed desktop application by name (for example 'Firefox', 'Files', 'Terminal').",
         params={"name": "string: application name"},
         risk="low",
+        allow_scope=["name"],
     )
     async def open_application(self, name: str):
         apps = await asyncio.to_thread(find_desktop_apps)
@@ -86,7 +87,12 @@ class SystemPlugin(Plugin):
         code, out = await run(["gtk-launch", desktop_id])
         return {"opened": code == 0, "app": desktop_id, "output": out[-300:]}
 
-    @tool("Open a web link or a file in its default application.", params={"target": "string: URL or file path"}, risk="low")
+    @tool(
+        "Open a web link or a file in its default application.",
+        params={"target": "string: URL or file path"},
+        risk="low",
+        allow_scope=["target"],
+    )
     async def open_link(self, target: str):
         target = os.path.expanduser(target)
         code, out = await run(["xdg-open", target])

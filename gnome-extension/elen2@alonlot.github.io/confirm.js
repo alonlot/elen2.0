@@ -102,6 +102,20 @@ class ElenConfirmDialog extends ModalDialog.ModalDialog {
         });
         this.contentLayout.add_child(this._reason);
 
+        // "Don't ask again" for this exact kind of action (offered only when it is safe).
+        this._remember = false;
+        if (conf.allow_label) {
+            const box = new St.BoxLayout({style_class: 'elen-remember'});
+            const check = new St.Button({style_class: 'elen-remember-check', toggle_mode: true, can_focus: true, label: ' '});
+            check.connect('notify::checked', () => {
+                this._remember = check.checked;
+                check.label = check.checked ? '✓' : ' ';
+            });
+            box.add_child(check);
+            box.add_child(wrap(new St.Label({text: `Don't ask again for: ${conf.allow_label}`, style_class: 'elen-remember-label', y_align: Clutter.ActorAlign.CENTER})));
+            this.contentLayout.add_child(box);
+        }
+
         this.addButton({label: 'Reject', action: () => this._decide(false), key: Clutter.KEY_Escape});
         this._approve = this.addButton({label: danger ? 'Execute' : 'Approve', action: () => this._decide(true)});
         this._approve.add_style_class_name(danger ? 'elen-approve-danger' : 'elen-approve');
@@ -149,7 +163,7 @@ class ElenConfirmDialog extends ModalDialog.ModalDialog {
         if (this._decided)
             return;
         this._decided = true;
-        this._onDecision(approved, this._collect(), this._reason.get_text());
+        this._onDecision(approved, this._collect(), this._reason.get_text(), approved && this._remember);
         this.close();
     }
 
@@ -186,8 +200,8 @@ export class ConfirmManager {
             return;
         const conf = this._queue.shift();
         this._currentId = conf.id;
-        this._dialog = new ElenConfirmDialog(conf, (approved, args, reason) => {
-            this._client.call('Confirm', [conf.id, approved, JSON.stringify(args), reason])
+        this._dialog = new ElenConfirmDialog(conf, (approved, args, reason, remember) => {
+            this._client.call('Confirm', [conf.id, approved, JSON.stringify(args), reason, remember])
                 .catch(e => console.error(`Elen: Confirm failed: ${e}`));
         });
         this._dialog.connect('closed', () => {

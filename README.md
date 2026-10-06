@@ -171,7 +171,15 @@ does, not only what the prompt asks:
    untrusted data, and the brain is told never to follow instructions inside it. In code:
    after outside content enters the conversation, **every** action needs your approval, also
    small ones such as opening a link, and the dialog says why.
-9. **Audit log** of every action, approval and rejection: `~/.local/share/elen/audit.log`.
+9. **"Don't ask again", narrow and safe.** The approval dialog can offer a check box such as
+   "Don't ask again for: Open link: target = youtube.com". A rule covers only that exact kind of
+   action: a link counts by its domain, an email by its recipient. Dangerous actions (shell,
+   Claude Code) never get this option. A rule never applies when the dialog would show a
+   warning: an unverified recipient, a conflict with your permanent rules, or, for rules that
+   cover a whole tool, outside content read in the conversation. Only you can create a rule (in
+   the dialog). "Show my allow rules" lists them; Elen can remove one on request. Fewer dialogs
+   means you read each one with care.
+10. **Audit log** of every action, approval and rejection: `~/.local/share/elen/audit.log`.
 
 You can change the level of any tool or plugin in `[guard.overrides]`. Lowering a `write` or
 `dangerous` tool removes its approval step. Do that only if you accept the risk.

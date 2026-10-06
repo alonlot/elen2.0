@@ -10,7 +10,7 @@ const IFACE = `
     <method name="ClearHistory"><arg type="b" direction="out"/></method>
     <method name="Confirm">
       <arg type="s" direction="in"/><arg type="b" direction="in"/>
-      <arg type="s" direction="in"/><arg type="s" direction="in"/>
+      <arg type="s" direction="in"/><arg type="s" direction="in"/><arg type="b" direction="in"/>
       <arg type="b" direction="out"/>
     </method>
     <method name="PendingConfirmations"><arg type="s" direction="out"/></method>

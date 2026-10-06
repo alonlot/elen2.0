@@ -34,7 +34,8 @@ async def _confirm_in_terminal(core: Elen, conf: dict) -> None:
         print(f"{RED}! {w}{RESET}")
     for k, v in conf["arguments"].items():
         print(f"  {k}: {v}")
-    answer = await asyncio.to_thread(input, f"{color}Approve? [y/N/e=edit] {RESET}")
+    hint = "/a=approve and don't ask again" if conf.get("allow_label") else ""
+    answer = await asyncio.to_thread(input, f"{color}Approve? [y/N/e=edit{hint}] {RESET}")
     args = dict(conf["arguments"])
     if answer.strip().lower() == "e":
         for key in conf["editable"]:
@@ -42,7 +43,9 @@ async def _confirm_in_terminal(core: Elen, conf: dict) -> None:
             if new:
                 args[key] = new
         answer = await asyncio.to_thread(input, f"{color}Approve edited version? [y/N] {RESET}")
-    core.resolve_confirmation(conf["id"], answer.strip().lower() in ("y", "yes"), args)
+    choice = answer.strip().lower()
+    remember = choice == "a" and bool(conf.get("allow_label"))
+    core.resolve_confirmation(conf["id"], choice in ("y", "yes") or remember, args, "", remember)
 
 
 def attach_terminal(core: Elen) -> None:

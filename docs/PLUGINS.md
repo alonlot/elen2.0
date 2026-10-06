@@ -42,6 +42,7 @@ class HelloPlugin(Plugin):
     recipients=[...],                # arguments that hold other people's addresses / numbers
     title="Send message",            # name in the approval dialog
     untrusted=False,                 # True if the result holds text written by other people
+    allow_scope=None,                # args that define "the same action" for "Don't ask again"
 )
 ```
 
@@ -74,6 +75,11 @@ from that point every action in the conversation needs approval, also `low` ones
 
 A tool that sends data to an address the model chooses (for example an HTTP GET to any URL)
 can leak data, even if it only reads. Give it at least `risk="low"`, never `read`.
+
+**Allow scope.** "Don't ask again" makes an allow rule for one kind of action. By default
+the scope is the recipient args (a rule per person), or the whole tool when it has none. Set
+`allow_scope=["target"]` to scope by an argument; URLs count by their domain. Dangerous tools
+never get allow rules.
 
 **Recipients.** If the tool sends something to a person (mail, chat message, SMS, a call),
 list the argument in `recipients=[...]`. The guard then labels each address or number in

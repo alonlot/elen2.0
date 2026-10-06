@@ -16,6 +16,8 @@ from __future__ import annotations
 import json
 import re
 import time
+import uuid
+from urllib.parse import urlparse
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
@@ -66,6 +68,7 @@ class Confirmation:
     editable: list[str]
     warnings: list[str] = field(default_factory=list)
     recipients: list[dict[str, Any]] = field(default_factory=list)
+    allow_label: str = ""  # offered "don't ask again" scope, empty = not offered
     created: float = field(default_factory=time.time)
 
     def to_dict(self) -> dict[str, Any]:
@@ -79,7 +82,58 @@ class Confirmation:
             "editable": self.editable,
             "warnings": self.warnings,
             "recipients": self.recipients,
+            "allow_label": self.allow_label,
         }
+
+
+def scope_value(value: Any) -> str:
+    """How an argument counts for an allow rule: a URL by its domain, addresses normalised."""
+    if isinstance(value, (list, tuple)):
+        return ", ".join(sorted(scope_value(v) for v in value))
+    text = str(value or "").strip()
+    if re.match(r"^[a-z][a-z0-9+.-]*://", text, re.I):
+        host = (urlparse(text).hostname or "").lower()
+        return host[4:] if host.startswith("www.") else host
+    if EMAIL_RE.search(text):
+        return ", ".join(sorted(normalise(a) for a in split_addresses(text)))
+    return text.lower()
+
+
+class AllowRules:
+    """ "Approve and don't ask again" rules, made only by the user in the approval dialog."""
+
+    def __init__(self, path: Path):
+        self.path = path
+        try:
+            self.rules: list[dict[str, Any]] = json.loads(path.read_text())
+        except (OSError, ValueError):
+            self.rules = []
+
+    def _save(self) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.path.write_text(json.dumps(self.rules, ensure_ascii=False, indent=1))
+        self.path.chmod(0o600)
+
+    def match(self, tool: str, scope: dict[str, str]) -> dict[str, Any] | None:
+        for rule in self.rules:
+            if rule["tool"] == tool and rule["scope"] == scope:
+                return rule
+        return None
+
+    def add(self, tool: str, scope: dict[str, str], label: str) -> dict[str, Any]:
+        existing = self.match(tool, scope)
+        if existing:
+            return existing
+        rule = {"id": uuid.uuid4().hex[:6], "tool": tool, "scope": scope, "label": label, "created": time.time()}
+        self.rules.append(rule)
+        self._save()
+        return rule
+
+    def remove(self, rule_id: str) -> bool:
+        before = len(self.rules)
+        self.rules = [r for r in self.rules if r["id"] != rule_id]
+        self._save()
+        return len(self.rules) != before
 
 
 class Guard:
@@ -94,6 +148,19 @@ class Guard:
 
     def needs_confirmation(self, spec: ToolSpec) -> bool:
         return self.effective_risk(spec) in ("write", "dangerous")
+
+    def allow_scope(self, spec: ToolSpec, args: dict[str, Any]) -> dict[str, str] | None:
+        """The scope an allow rule for this call would have, or None if it cannot have one."""
+        if self.effective_risk(spec) == "dangerous" or not self.cfg.get("allow_rules", True):
+            return None
+        keys = spec.allow_scope if spec.allow_scope is not None else spec.recipients
+        return {k: scope_value(args.get(k)) for k in keys}
+
+    @staticmethod
+    def scope_label(spec: ToolSpec, scope: dict[str, str]) -> str:
+        if not scope:
+            return f"{spec.title} (any)"
+        return f"{spec.title}: " + ", ".join(f"{k} = {v}" for k, v in scope.items())
 
     def check_recipients(
         self,
