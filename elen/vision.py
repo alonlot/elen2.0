@@ -37,5 +37,11 @@ class Vision:
                 {"type": "text", "text": question or "Describe what is on the screen."},
             ],
         }
-        resp = await self.provider.chat(VISION_SYSTEM, [msg], None)
+        try:
+            resp = await self.provider.chat(VISION_SYSTEM, [msg], None)
+        except Exception as e:  # noqa: BLE001
+            raise RuntimeError(
+                f"The vision model could not read the image ({e}). Use a model that accepts images "
+                "in [vision], or set [vision] provider/model to a vision model."
+            ) from e
         return resp.text

@@ -21,11 +21,6 @@ if ((${#MISSING[@]})); then
   sudo apt-get install -y "${MISSING[@]}"
 fi
 
-if ! command -v claude >/dev/null 2>&1; then
-  say "The 'claude' CLI is not installed. Elen's default brain is 'claude -p'."
-  say "Install it: npm install -g @anthropic-ai/claude-code   then run 'claude' once to log in."
-fi
-
 say "Creating Python environment in $VENV"
 mkdir -p "$PREFIX"
 python3 -m venv "$VENV"
@@ -40,7 +35,7 @@ mkdir -p "$CONF/plugins"
 
 if CLAUDE_BIN="$(command -v claude)"; then
   # The systemd service may not have npm's bin folder on its PATH: use the full path.
-  for key in brain.binary vision.binary plugins.claude_code.binary; do
+  for key in plugins.claude_code.binary; do
     ELEN_CONFIG="$CONF/config.toml" "$VENV/bin/elen" set "$key" "$CLAUDE_BIN" >/dev/null
   done
 fi
@@ -67,9 +62,11 @@ cat <<MSG
 Elen 2.0 is installed.
 
 Next steps:
- 1. Log in to Claude Code once: run 'claude' (the brain is 'claude -p').
-    For voice, put OPENAI_API_KEY=... in $CONF/env (or pick another STT provider).
- 2. Edit $CONF/config.toml or use the gear button in the chat (models, URLs, mail, calendar)
+ 1. Choose the brain: any LLM. Default is a local Ollama server
+    (install Ollama, then: ollama pull qwen2.5:14b). Or set another URL/model
+    with the gear button in the chat, or in $CONF/config.toml.
+    Put API keys in $CONF/env (for example OPENAI_API_KEY=... for voice).
+ 2. Edit $CONF/config.toml for mail, calendar and plugins
  3. systemctl --user restart elen
  4. Log out and log in again (GNOME on Wayland loads new extensions only at login).
     Then run: gnome-extensions enable $UUID

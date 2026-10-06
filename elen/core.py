@@ -138,11 +138,21 @@ class Elen:
             int(cfg["history"]["max_tool_result_chars"]),
         )
         self.guard = Guard(cfg, self.data_dir / "audit.log")
-        self.vision = Vision(cfg["vision"])
+        self.vision = Vision(self.model_config("vision"))
         self.listener = Listener(cfg["stt"])
         self.speaker = Speaker(cfg["tts"])
         self._brain = None
         self._checker = None
+
+    def model_config(self, section: str) -> dict[str, Any]:
+        """Settings for [vision] or [checker]. An empty provider means: copy [brain]."""
+        brain = dict(self.config["brain"])
+        own = {k: v for k, v in (self.config.get(section) or {}).items() if v not in ("", None)}
+        if own.get("provider"):
+            return {**brain, "effort": "", "fallbacks": False, "tool_mode": "auto", **own}
+        if section == "checker" and brain.get("effort"):
+            brain["effort"] = "low"
+        return {**brain, **own}
 
     @property
     def brain(self):
@@ -156,11 +166,9 @@ class Elen:
 
     @property
     def checker(self):
-        """Model for the rule check. [checker] in config, else the brain model at low effort."""
+        """Model for the rule check: [checker], or the brain settings at low effort."""
         if self._checker is None:
-            own = self.config.get("checker") or {}
-            base = {**self.config["brain"], "effort": "low", "max_tokens": 2000}
-            self._checker = make_provider(deep_merge(base, own))
+            self._checker = make_provider(self.model_config("checker"))
         return self._checker
 
     @checker.setter
@@ -289,7 +297,7 @@ class Elen:
             "state": self.state,
             "brain": f"{self.config['brain']['provider']}:{self.config['brain'].get('model') or 'default'}",
             "brain_url": self.config["brain"].get("base_url") or "default",
-            "vision": f"{self.config['vision']['provider']}:{self.config['vision']['model']}",
+            "vision": "{provider}:{model}".format(**{"model": "", **self.model_config("vision")}),
             "stt": f"{self.config['stt']['provider']}:{self.config['stt'].get('model', '')}",
             "plugins": sorted(self.plugins),
             "plugin_errors": self.plugin_errors,

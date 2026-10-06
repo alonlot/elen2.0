@@ -8,17 +8,19 @@ import Gtk from 'gi://Gtk';
 import {ExtensionPreferences} from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 
 const EFFORTS = ['', 'low', 'medium', 'high', 'xhigh', 'max'];
+const TOOL_MODES = ['auto', 'native', 'prompt'];
 
 const SECTIONS = [
     {
-        key: 'brain', title: 'Brain (the agent)',
-        description: 'claude_cli runs "claude -p" as the agent and uses your Claude Code login. ' +
-            'Model: any name, for example opus, sonnet, claude-opus-5-5, or a model on your own server.',
+        key: 'brain', title: 'Brain (any LLM)',
+        description: 'openai_compatible works with any server that has the OpenAI chat API: ' +
+            'Ollama, LM Studio, vLLM, LiteLLM, OpenAI, OpenRouter, Groq, Gemini, Mistral, DeepSeek... ' +
+            'Pick a preset or type your own URL and model name.',
     },
-    {key: 'vision', title: 'Vision', description: 'Looks at screenshots.'},
+    {key: 'vision', title: 'Vision', description: 'Looks at screenshots. Needs a model that accepts images. "same as brain" = brain settings.'},
     {
         key: 'checker', title: 'Rule checker',
-        description: 'Checks actions and replies against your permanent rules. Provider "same as brain" = brain settings at low effort.',
+        description: 'Checks actions and replies against your permanent rules. "same as brain" = brain settings.',
     },
     {key: 'stt', title: 'Speech to text', description: 'openai = any OpenAI-compatible transcription URL.'},
 ];
@@ -60,32 +62,67 @@ export default class ElenPreferences extends ExtensionPreferences {
             rows[section.key] = {};
 
             const providers = [...(data.providers?.[section.key] ?? [])];
-            if (section.key === 'checker')
-                providers.unshift('');
             const labels = providers.map(v => v || 'same as brain');
+            const isLlm = section.key !== 'stt';
+
+            let presetRow = null;
+            const presets = data.presets ?? [];
+            if (isLlm) {
+                presetRow = new Adw.ComboRow({
+                    title: 'Preset',
+                    subtitle: 'Fills provider and URL',
+                    model: Gtk.StringList.new(['custom', ...presets.map(p => p.name)]),
+                });
+                group.add(presetRow);
+            }
+
             const providerRow = new Adw.ComboRow({title: 'Provider', model: Gtk.StringList.new(labels)});
             providerRow.selected = Math.max(0, providers.indexOf(values.provider ?? ''));
             group.add(providerRow);
             rows[section.key].provider = () => providers[providerRow.selected] ?? '';
 
+            const entries = {};
             const entry = (name, title, password = false) => {
                 const cls = password ? Adw.PasswordEntryRow : Adw.EntryRow;
                 const row = new cls({title, text: String(values[name] ?? '')});
                 group.add(row);
+                entries[name] = row;
                 rows[section.key][name] = () => row.text;
             };
-            entry('model', 'Model (free text)');
-            entry('base_url', 'Custom URL (empty = default)');
-            entry('api_key', 'API key (env:VAR, cmd:..., or the key; empty = claude login)', true);
-            if (section.key === 'stt') {
+            entry('model', 'Model name (free text)');
+            entry('base_url', 'Custom URL');
+            entry('api_key', 'API key (env:VAR, cmd:..., or the key; empty = none)', true);
+
+            presetRow?.connect('notify::selected', () => {
+                const preset = presets[presetRow.selected - 1];
+                if (!preset)
+                    return;
+                providerRow.selected = Math.max(0, providers.indexOf(preset.provider));
+                entries.base_url.text = preset.base_url;
+                if (preset.model)
+                    entries.model.text = preset.model;
+            });
+
+            if (!isLlm) {
                 entry('language', 'Language (empty = auto)');
-            } else {
-                entry('auth_token', 'Auth token for a gateway (optional)', true);
-                const effortRow = new Adw.ComboRow({title: 'Effort', model: Gtk.StringList.new(EFFORTS.map(e => e || 'default'))});
-                effortRow.selected = Math.max(0, EFFORTS.indexOf(values.effort ?? ''));
-                group.add(effortRow);
-                rows[section.key].effort = () => EFFORTS[effortRow.selected];
+                continue;
             }
+            const modeRow = new Adw.ComboRow({
+                title: 'Tool calling',
+                subtitle: 'auto = native tools, or prompt-based tools if the model has none',
+                model: Gtk.StringList.new(TOOL_MODES),
+            });
+            modeRow.selected = Math.max(0, TOOL_MODES.indexOf(values.tool_mode || 'auto'));
+            group.add(modeRow);
+            rows[section.key].tool_mode = () => TOOL_MODES[modeRow.selected];
+            const effortRow = new Adw.ComboRow({
+                title: 'Effort', subtitle: 'Only anthropic and claude_cli use it',
+                model: Gtk.StringList.new(EFFORTS.map(e => e || 'default')),
+            });
+            effortRow.selected = Math.max(0, EFFORTS.indexOf(values.effort ?? ''));
+            group.add(effortRow);
+            rows[section.key].effort = () => EFFORTS[effortRow.selected];
+            entry('auth_token', 'Auth token (claude_cli gateways only)', true);
         }
 
         const applyGroup = new Adw.PreferencesGroup();

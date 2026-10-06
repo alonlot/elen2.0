@@ -34,38 +34,34 @@ EXAMPLE_CONFIG = Path(__file__).resolve().parent.parent / "config" / "config.exa
 DEFAULTS: dict[str, Any] = {
     "user": {"name": "", "language": "en", "timezone": ""},
     "brain": {
-        # claude_cli = `claude -p` runs the agent (default). Or: anthropic | openai | ollama
-        "provider": "claude_cli",
-        "model": "claude-opus-5-5",
-        "base_url": "",
+        # Any LLM. "openai_compatible" talks to every server with the OpenAI chat API
+        # (Ollama, LM Studio, vLLM, LiteLLM, OpenAI, OpenRouter, Groq, Gemini, Mistral...).
+        # Other providers: "anthropic" (Claude API), "claude_cli" (`claude -p` runs the agent).
+        "provider": "openai_compatible",
+        "model": "qwen2.5:14b",
+        "base_url": "http://localhost:11434/v1",
         "api_key": "",
+        "headers": {},
+        "extra_body": {},
+        "tool_mode": "auto",
+        "timeout": 300,
+        "max_tokens": 8000,
+        "max_steps": 12,
+        # Only for some providers:
+        "effort": "",
         "auth_token": "",
         "env": {},
         "binary": "claude",
-        "effort": "medium",
-        "timeout": 1800,
         "builtin_tools": [],
         "setting_sources": "",
         "replace_system_prompt": True,
         "workdir": "~",
         "extra_args": [],
-        "max_tokens": 8000,
-        "fallbacks": True,
-        "max_steps": 12,
+        "fallbacks": False,
     },
-    "vision": {
-        "provider": "claude_cli",
-        "model": "claude-opus-5-5",
-        "base_url": "",
-        "api_key": "",
-        "auth_token": "",
-        "env": {},
-        "binary": "claude",
-        "effort": "low",
-        "timeout": 300,
-        "max_tokens": 4000,
-        "fallbacks": True,
-    },
+    # Empty provider = use the [brain] settings (fields set here override them).
+    "vision": {"provider": ""},
+    "checker": {"provider": ""},
     "stt": {
         "provider": "openai",
         "model": "whisper-1",

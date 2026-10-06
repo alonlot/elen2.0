@@ -83,6 +83,8 @@ class ClaudeCLIProvider:
         self.cfg = cfg
         self.binary = shutil.which(cfg.get("binary") or "claude") or ""
         self.model = cfg.get("model") or ""
+        # Own timeout: one request includes approval waits and tool runs.
+        self.timeout = float(cfg.get("cli_timeout") or 1800)
         self._proc: asyncio.subprocess.Process | None = None
 
     # ------------------------------------------------------------ helpers
@@ -99,7 +101,7 @@ class ClaudeCLIProvider:
         for k, v in (self.cfg.get("env") or {}).items():
             env[str(k)] = resolve_secret(str(v))
         # Approvals and long tasks can take minutes; do not let the MCP call time out first.
-        env.setdefault("MCP_TOOL_TIMEOUT", str(int(float(self.cfg.get("timeout", 1800)) * 1000)))
+        env.setdefault("MCP_TOOL_TIMEOUT", str(int(self.timeout * 1000)))
         return env
 
     def _base_cmd(self, system: str) -> list[str]:
@@ -174,7 +176,7 @@ class ClaudeCLIProvider:
                         error=str(ev.get("result") or ev.get("subtype") or "") if is_error else "",
                     )
 
-        timeout = float(self.cfg.get("timeout", 1800))
+        timeout = self.timeout
         try:
             await asyncio.wait_for(read_stream(), timeout)
             await asyncio.wait_for(proc.wait(), 10)

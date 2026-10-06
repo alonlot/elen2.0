@@ -12,19 +12,37 @@ from typing import Any
 
 from .config import config_path, ensure_user_config, load_config
 
+LLM_KEYS = ("provider", "model", "base_url", "api_key", "tool_mode", "effort", "auth_token")
 MODEL_SECTIONS = {
-    "brain": ("provider", "model", "base_url", "api_key", "auth_token", "effort"),
-    "vision": ("provider", "model", "base_url", "api_key", "auth_token", "effort"),
-    "checker": ("provider", "model", "base_url", "api_key", "auth_token", "effort"),
+    "brain": LLM_KEYS,
+    "vision": LLM_KEYS,
+    "checker": LLM_KEYS,
     "stt": ("provider", "model", "base_url", "api_key", "language"),
 }
 
+LLM_PROVIDERS = ["openai_compatible", "ollama", "anthropic", "claude_cli"]
 PROVIDERS = {
-    "brain": ["claude_cli", "anthropic", "openai", "ollama"],
-    "vision": ["claude_cli", "anthropic", "openai", "ollama"],
-    "checker": ["claude_cli", "anthropic", "openai", "ollama"],
+    "brain": LLM_PROVIDERS,
+    "vision": [""] + LLM_PROVIDERS,  # "" = same as brain
+    "checker": [""] + LLM_PROVIDERS,
     "stt": ["openai", "faster_whisper", "command", "none"],
 }
+
+# Ready-made base URLs for the settings window (provider, base_url, example model).
+PRESETS = [
+    {"name": "Ollama (local)", "provider": "openai_compatible", "base_url": "http://localhost:11434/v1", "model": "qwen2.5:14b"},
+    {"name": "LM Studio (local)", "provider": "openai_compatible", "base_url": "http://localhost:1234/v1", "model": ""},
+    {"name": "vLLM / llama.cpp (local)", "provider": "openai_compatible", "base_url": "http://localhost:8000/v1", "model": ""},
+    {"name": "LiteLLM proxy", "provider": "openai_compatible", "base_url": "http://localhost:4000/v1", "model": ""},
+    {"name": "OpenAI", "provider": "openai_compatible", "base_url": "https://api.openai.com/v1", "model": "gpt-4o"},
+    {"name": "OpenRouter", "provider": "openai_compatible", "base_url": "https://openrouter.ai/api/v1", "model": ""},
+    {"name": "Groq", "provider": "openai_compatible", "base_url": "https://api.groq.com/openai/v1", "model": ""},
+    {"name": "Google Gemini", "provider": "openai_compatible", "base_url": "https://generativelanguage.googleapis.com/v1beta/openai", "model": ""},
+    {"name": "Mistral", "provider": "openai_compatible", "base_url": "https://api.mistral.ai/v1", "model": ""},
+    {"name": "DeepSeek", "provider": "openai_compatible", "base_url": "https://api.deepseek.com/v1", "model": ""},
+    {"name": "Anthropic API", "provider": "anthropic", "base_url": "", "model": "claude-opus-5-5"},
+    {"name": "claude -p (Claude Code)", "provider": "claude_cli", "base_url": "", "model": "opus"},
+]
 
 
 def toml_value(value: Any) -> str:
@@ -71,7 +89,7 @@ def set_values(section: str, values: dict[str, Any], path: Path | None = None) -
 
 def get_model_settings() -> dict[str, Any]:
     cfg = load_config()
-    out: dict[str, Any] = {"providers": PROVIDERS}
+    out: dict[str, Any] = {"providers": PROVIDERS, "presets": PRESETS}
     for section, keys in MODEL_SECTIONS.items():
         src = cfg.get(section) or {}
         out[section] = {k: src.get(k, "") for k in keys}
@@ -84,8 +102,6 @@ def apply_model_settings(data: dict[str, Any]) -> Path:
         values = {k: v for k, v in (data.get(section) or {}).items() if k in keys and v is not None}
         if not values:
             continue
-        if section == "checker" and not values.get("provider"):
-            continue  # empty checker = use the brain settings
         if "provider" in values and values["provider"] not in PROVIDERS[section]:
             raise ValueError(f"Unknown {section} provider '{values['provider']}'")
         set_values(section, values, path)

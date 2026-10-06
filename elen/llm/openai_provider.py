@@ -1,7 +1,14 @@
-"""Provider for any OpenAI-compatible chat API.
+"""Generic provider for any OpenAI-compatible chat API.
 
-This covers OpenAI, Ollama (http://localhost:11434/v1), LM Studio, vLLM,
-llama.cpp server, Groq, OpenRouter and similar services.
+This is the default brain. Almost every LLM server speaks this API: OpenAI,
+Ollama (http://localhost:11434/v1), LM Studio, vLLM, llama.cpp server, LiteLLM,
+OpenRouter, Groq, Together, Mistral, DeepSeek, Google Gemini (OpenAI endpoint),
+Azure OpenAI and others.
+
+Config keys: model, base_url, api_key, headers (extra HTTP headers),
+extra_body (extra request fields, for example {"temperature": 0.3}),
+tool_mode: "auto" (native tools, prompt tools if the server rejects them),
+"native" or "prompt".
 """
 
 from __future__ import annotations
@@ -68,13 +75,34 @@ class OpenAICompatProvider:
         self.model = cfg.get("model") or "gpt-4o"
         self.base_url = (cfg.get("base_url") or "https://api.openai.com/v1").rstrip("/")
         self.api_key = resolve_secret(cfg.get("api_key"))
+        self.tool_mode = (cfg.get("tool_mode") or "auto").lower()
+        self._prompt_tools = None
+        self._transport = None  # tests can set an httpx transport
 
     async def chat(self, system, messages, tools=None) -> LLMResponse:
+        if tools and self.tool_mode == "prompt":
+            if self._prompt_tools is None:
+                from .prompt_tools import PromptToolsAdapter
+
+                self._prompt_tools = PromptToolsAdapter(_NoTools(self))
+            return await self._prompt_tools.chat(system, messages, tools)
+        try:
+            return await self._request(system, messages, tools)
+        except LLMError as e:
+            text = str(e).lower()
+            if tools and self.tool_mode == "auto" and " 4" in text[:30] and "tool" in text:
+                # The server or model does not support native tools: use prompt tools from now on.
+                self.tool_mode = "prompt"
+                return await self.chat(system, messages, tools)
+            raise
+
+    async def _request(self, system, messages, tools=None) -> LLMResponse:
         body: dict[str, Any] = {
             "model": self.model,
             "messages": to_openai_messages(system, messages),
             "max_tokens": int(self.cfg.get("max_tokens") or 4000),
         }
+        body.update(self.cfg.get("extra_body") or {})
         if tools:
             body["tools"] = [
                 {
@@ -90,8 +118,12 @@ class OpenAICompatProvider:
         headers = {"Content-Type": "application/json"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
+        for k, v in (self.cfg.get("headers") or {}).items():
+            headers[str(k)] = resolve_secret(str(v))
         try:
-            async with httpx.AsyncClient(timeout=300) as client:
+            async with httpx.AsyncClient(
+                timeout=float(self.cfg.get("timeout") or 300), transport=self._transport
+            ) as client:
                 r = await client.post(f"{self.base_url}/chat/completions", json=body, headers=headers)
         except httpx.HTTPError as e:
             raise LLMError(f"Cannot reach {self.base_url}: {e}") from e
@@ -113,3 +145,14 @@ class OpenAICompatProvider:
             tool_calls=calls,
             stop_reason=choice.get("finish_reason") or "",
         )
+
+
+class _NoTools:
+    """Calls the server without the tools field (used by prompt tools)."""
+
+    def __init__(self, provider: OpenAICompatProvider):
+        self.provider = provider
+        self.name = provider.name
+
+    async def chat(self, system, messages, tools=None) -> LLMResponse:
+        return await self.provider._request(system, messages, None)

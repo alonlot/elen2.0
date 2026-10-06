@@ -13,12 +13,13 @@ A Jarvis-like personal assistant for Ubuntu 24.04 (GNOME 46, Wayland).
   tables, text, screenshots. Any plugin can show any of these.
 - **Screen vision**: Elen can take a screenshot and ask the vision model about it when it
   decides that helps ("what is this error?").
-- **The brain is `claude -p`** (Claude Code in headless mode), with your Claude Code login.
-  Elen's plugins reach it as MCP tools, so every action still goes through Elen's guard.
+- **The brain is any LLM.** The default provider speaks the OpenAI chat API, which almost every
+  server uses: Ollama, LM Studio, vLLM, LiteLLM, OpenAI, OpenRouter, Groq, Gemini, Mistral,
+  DeepSeek. Models without native tool calling still work (prompt-based tools). Optional
+  providers: the Claude API, and `claude -p` as the agent.
 - **Separate models** for the brain, vision, the rule checker and speech to text. Each one has
   a free-text model name and a custom URL. Change them in the settings window (gear button in
-  the chat) or with `elen set brain.model opus`. Other brains: Claude API, OpenAI, Ollama, or
-  any OpenAI-compatible server.
+  the chat, with presets) or with `elen set brain.model llama3.1:70b`.
 - **Plugins** give Elen tools: mail (any IMAP/SMTP server), calendar (CalDAV / ICS), contacts,
   memory, desktop control, and full PC control through `claude -p`. Adding your own plugin is
   one Python file. See [docs/PLUGINS.md](docs/PLUGINS.md).
@@ -32,28 +33,25 @@ A Jarvis-like personal assistant for Ubuntu 24.04 (GNOME 46, Wayland).
 ```
  GNOME Shell extension (JavaScript)          Elen daemon (Python, systemd user service)
  ┌──────────────────────────────┐   D-Bus    ┌──────────────────────────────────────┐
- │ panel orb + chat + CLEAR tab │◄──────────►│ agent loop (brain model + tools)      │
+ │ panel orb + chat + CLEAR tab │◄──────────►│ agent loop + guard + plugins          │
  │ HUD visuals                  │  session   │ guard: approvals, recipient checks,   │
- │ approval dialogs             │    bus     │        action-claim check, audit log  │
- │ screenshots (Shell API)      │            │ plugins: mail, calendar, contacts...  │
- │ shortcuts Super+J / +Shift+J │            │ STT recorder + transcriber, TTS       │
- └──────────────────────────────┘            │ vision model                          │
-                                              └───────────────┬──────────────────────┘
-                                                  Unix socket │ (guarded tool calls)
-                                              ┌───────────────┴──────────────────────┐
-                                              │ claude -p  (the agent)                │
-                                              │   └─ MCP server "elen" (mcp_bridge)   │
-                                              └──────────────────────────────────────┘
+ │ approval dialogs             │    bus     │        rule checks, audit log         │
+ │ screenshots (Shell API)      │            │ STT recorder + transcriber, TTS       │
+ │ settings window              │            └───────────────┬──────────────────────┘
+ └──────────────────────────────┘                            │ brain provider (choose one)
+          ┌───────────────────────────┬──────────────────────┼─────────────────────────┐
+   openai_compatible (default)    ollama              anthropic            claude_cli
+   any OpenAI-API server          local               Claude API           `claude -p` + MCP
 ```
-
-With the default brain, each message starts `claude -p`. It has **no** built-in Bash, Edit or
-Write tools; its only tools are Elen's plugins (`mcp__elen__...`). Each tool call goes back to
-the daemon, which runs the guard (approval dialog, recipient check, rule check) before
-anything happens. The chat keeps one `claude -p` session (`--resume`) until you press CLEAR.
 
 GNOME on Wayland does not let a normal app place its own window at the top of the screen. For
 this reason the UI is a GNOME Shell extension, and the logic is a separate daemon. The
 extension only draws; all decisions and all data stay in the daemon.
+
+With every brain provider, the brain only asks for a tool; the daemon runs it, and the guard
+(approval dialog, recipient check, rule check) decides first. With `claude_cli`, the tools reach
+`claude -p` through an MCP server (`mcp__elen__...`), and Claude Code's own Bash/Edit/Write
+tools are off.
 
 ## Install
 
@@ -64,9 +62,12 @@ git clone https://github.com/alonlot/elen2.0 && cd elen2.0
 
 Then:
 
-1. Install Claude Code and log in once: `npm install -g @anthropic-ai/claude-code`, then `claude`.
-   For the default voice transcription, put `OPENAI_API_KEY=sk-...` in `~/.config/elen/env`
-   (or choose `faster_whisper` for offline speech to text).
+1. Choose the brain. The default is a local [Ollama](https://ollama.com) server:
+   `ollama pull qwen2.5:14b`. For any other LLM, use the gear button in the chat (presets for
+   LM Studio, vLLM, LiteLLM, OpenAI, OpenRouter, Groq, Gemini, Mistral, DeepSeek, Claude) or
+   edit `[brain]` in the config. Put keys in `~/.config/elen/env` and refer to them as
+   `env:NAME`. For the default voice transcription, set `OPENAI_API_KEY` (or choose
+   `faster_whisper` for offline speech to text).
 2. Edit `~/.config/elen/config.toml` (models, mail, calendar, plugins).
 3. `systemctl --user restart elen`
 4. Log out and log in again. GNOME on Wayland loads a new extension only at login. Then:
@@ -82,30 +83,36 @@ In the settings window (gear button in the chat header, or the Extensions app), 
 
 | Section     | What it does                         | Default |
 |-------------|--------------------------------------|---------|
-| `[brain]`   | the agent: thinks, picks tools, writes replies | `claude_cli` (`claude -p`) |
-| `[vision]`  | looks at screenshots                 | `claude_cli` |
-| `[checker]` | checks actions and replies against your rules | brain settings, effort low |
+| `[brain]`   | the agent: thinks, picks tools, writes replies | `openai_compatible`, local Ollama |
+| `[vision]`  | looks at screenshots (needs an image model) | same as brain |
+| `[checker]` | checks actions and replies against your rules | same as brain |
 | `[stt]`     | speech to text                       | `openai` + `whisper-1` |
 | `[tts]`     | optional spoken replies              | off |
 
 Every model section has:
 
-- `provider`: `claude_cli`, `anthropic`, `openai` or `ollama` (`[stt]`: `openai`,
-  `faster_whisper`, `command`, `none`).
-- `model`: free text. For `claude_cli` it goes to `--model`: an alias (`opus`, `sonnet`,
-  `haiku`), a full id (`claude-opus-5-5`), or any name your custom server accepts.
-- `base_url`: custom URL. For `claude_cli`, Elen sets `ANTHROPIC_BASE_URL` for the CLI, so a
-  gateway or proxy (for example LiteLLM) works. For `openai`, it is the API base.
-- `api_key` / `auth_token`: empty for `claude_cli` means "use my `claude` login".
+- `provider`: `openai_compatible` (any LLM server), `ollama`, `anthropic` or `claude_cli`.
+  Empty in `[vision]` / `[checker]` means "same as the brain".
+- `model`: free text, any name your server knows.
+- `base_url`: custom URL of the server.
+- `api_key`: `env:NAME`, `cmd:...`, the key itself, or empty.
+- `tool_mode`: `auto` uses native tool calling and switches to prompt-based tools when the
+  server or model rejects them. `prompt` forces prompt-based tools (for small local models).
+- `headers` / `extra_body`: extra HTTP headers and request fields for special servers.
 
 Examples:
 
 ```bash
-elen set brain.model sonnet                      # faster brain
-elen set brain.base_url http://localhost:4000    # your own gateway
-elen set brain.effort low
-systemctl --user restart elen                    # the settings window restarts by itself
+elen set brain.base_url https://openrouter.ai/api/v1
+elen set brain.model meta-llama/llama-3.3-70b-instruct
+elen set brain.api_key env:OPENROUTER_API_KEY
+elen set vision.model qwen2.5vl:7b
+systemctl --user restart elen        # the settings window restarts Elen by itself
 ```
+
+Tool use is the hard part for a model: small local models (below about 14B parameters) often
+pick wrong tools or invent arguments. The guard still stops every action for your approval,
+but a stronger model makes far fewer mistakes.
 
 ## Guard rails
 
@@ -168,8 +175,8 @@ cheaper model: `[checker]` in the config. To turn the checks off: `[guard] rule_
 
 ## Full PC control with Claude Code
 
-The brain is `claude -p` without its own shell and file tools. For real computer work, enable
-`[plugins.claude_code]`. Elen can then hand a task to
+For real computer work, enable `[plugins.claude_code]` (needs the Claude Code CLI). Elen can
+then hand a task to
 `claude -p "<task>" --dangerously-skip-permissions`. Inside that task, Claude Code runs
 commands and edits files **without asking**. Elen still shows you the exact task text (you
 can edit it) and asks once before it starts. Use this plugin only if you understand that an

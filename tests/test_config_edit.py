@@ -21,11 +21,12 @@ def test_set_values_keeps_comments(env):
 
 def test_apply_and_read_models(env):
     (env / "cfg" / "config.toml").write_text("[brain]\n")
-    apply_model_settings({"brain": {"provider": "claude_cli", "model": "my-model", "base_url": "http://localhost:4000"},
-                          "checker": {"provider": "", "model": "x"}})
+    apply_model_settings({"brain": {"provider": "openai_compatible", "model": "my-model", "base_url": "http://localhost:4000/v1"},
+                          "checker": {"provider": "", "model": ""}})
     got = get_model_settings()
-    assert got["brain"]["model"] == "my-model" and got["brain"]["base_url"] == "http://localhost:4000"
-    assert "checker" not in tomllib.loads((env / "cfg" / "config.toml").read_text())
+    assert got["brain"]["model"] == "my-model" and got["brain"]["base_url"] == "http://localhost:4000/v1"
+    assert got["checker"]["provider"] == ""
+    assert any(p["name"].startswith("Ollama") for p in got["presets"])
 
 
 def test_set_dotted(env):

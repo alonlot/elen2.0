@@ -12,52 +12,46 @@ language = "en"      # reply language
 timezone = ""        # informative only; Elen uses the system time zone
 
 # ---------------------------------------------------------------- models
-# You can also change these in the settings window (gear button in the chat)
-# or with: elen set brain.model opus
+# Change these here, in the settings window (gear button in the chat), or with
+#   elen set brain.model llama3.1:70b
 #
-# provider = "claude_cli" -> `claude -p` (Claude Code) runs the agent. Uses your
-#                            `claude` login; no API key needed. (default)
-# provider = "anthropic"  -> Claude API through the official SDK (needs an API key)
-# provider = "openai"     -> any OpenAI-compatible API: OpenAI, Groq, OpenRouter,
-#                            LM Studio, vLLM, llama.cpp server...
-# provider = "ollama"     -> local Ollama (base_url defaults to http://localhost:11434/v1)
+# The brain works with ANY LLM:
+#   provider = "openai_compatible"  any server with the OpenAI chat API (default)
+#   provider = "ollama"             the same, base_url defaults to http://localhost:11434/v1
+#   provider = "anthropic"          Claude API
+#   provider = "claude_cli"         `claude -p` (Claude Code) runs the agent, with your login
 #
-# Every provider takes a free-text model name and a custom URL.
+# base_url examples for openai_compatible:
+#   Ollama      http://localhost:11434/v1        LM Studio  http://localhost:1234/v1
+#   vLLM        http://localhost:8000/v1         LiteLLM    http://localhost:4000/v1
+#   OpenAI      https://api.openai.com/v1        OpenRouter https://openrouter.ai/api/v1
+#   Groq        https://api.groq.com/openai/v1   Mistral    https://api.mistral.ai/v1
+#   DeepSeek    https://api.deepseek.com/v1
+#   Gemini      https://generativelanguage.googleapis.com/v1beta/openai
 
 [brain]
-provider = "claude_cli"
-model = "claude-opus-5-5"  # any name: "opus", "sonnet", a full model id, or a model on your server
-base_url = ""              # custom URL. claude_cli: set as ANTHROPIC_BASE_URL for the CLI
-api_key = ""               # claude_cli: empty = use your `claude` login
-auth_token = ""            # claude_cli: ANTHROPIC_AUTH_TOKEN, for gateways that want a bearer token
-effort = "medium"          # low | medium | high | xhigh | max. "low" answers faster.
-# claude_cli only:
-binary = "claude"
-timeout = 1800             # seconds for one request, approvals included
-builtin_tools = []         # Claude Code's own tools. Empty = only Elen's guarded tools.
-                           # For example ["WebSearch"]. Do NOT add Bash/Edit/Write: they
-                           # would act outside Elen's approval dialogs.
-workdir = "~"
-env = {}                   # more environment variables for the CLI
-# anthropic / openai only:
+provider = "openai_compatible"
+model = "qwen2.5:14b"           # any model name your server knows
+base_url = "http://localhost:11434/v1"
+api_key = ""                    # "env:OPENAI_API_KEY", "cmd:...", or empty for local servers
+tool_mode = "auto"              # auto | native | prompt. "prompt" = for models without tool calling
+headers = {}                    # extra HTTP headers, for example {"X-Team" = "home"}
+extra_body = {}                 # extra request fields, for example {temperature = 0.3}
+timeout = 300
 max_tokens = 8000
-fallbacks = true           # Claude API only
-max_steps = 12
+max_steps = 12                  # max tool rounds per request
+effort = ""                     # anthropic / claude_cli only: low | medium | high | xhigh | max
 
-# Example: Claude API instead of claude -p
-# provider = "anthropic"
-# api_key = "env:ANTHROPIC_API_KEY"
-#
-# Example: local model with Ollama
-# provider = "ollama"
-# model = "qwen2.5:14b"
+# claude_cli only (when provider = "claude_cli"):
+# binary = "claude"
+# auth_token = ""               # ANTHROPIC_AUTH_TOKEN for a gateway; base_url -> ANTHROPIC_BASE_URL
+# builtin_tools = []            # Claude Code's own tools. Do NOT add Bash/Edit/Write: they act
+#                               # outside Elen's approval dialogs.
+# cli_timeout = 1800            # seconds for one request, approvals included
 
-[vision]                   # looks at screenshots
-provider = "claude_cli"
-model = "claude-opus-5-5"
-base_url = ""
-api_key = ""
-effort = "low"
+[vision]                        # looks at screenshots; needs a model that accepts images
+provider = ""                   # empty = same as [brain]; fields set here override the brain
+# model = "qwen2.5vl:7b"
 
 [stt]                 # speech to text
 provider = "openai"   # openai | faster_whisper | command | none
@@ -114,10 +108,10 @@ enabled = true
 enabled = true
 max_facts_in_prompt = 60  # newest facts in every prompt; older ones via memory__recall. All rules always go in.
 
-# Model for the rule check. Default: the brain settings at effort "low".
+# Model for the rule check. Empty provider = same as [brain].
+# A small fast model is enough, for example:
 # [checker]
-# provider = "claude_cli"
-# model = "haiku"              # faster and cheaper
+# model = "qwen2.5:7b"
 
 [plugins.contacts]
 enabled = true
