@@ -69,12 +69,17 @@ class ContactsPlugin(Plugin):
                             "aliases": list(c.get("aliases", [])),
                             "notes": c.get("notes", ""),
                             "photo": str(Path(c["photo"]).expanduser()) if c.get("photo") else "",
+                            "vip": bool(c.get("vip", False)),
                         }
                     )
         for p in self.config.get("vcf_paths", []):
             path = Path(p).expanduser()
             if path.exists():
                 self.contacts.extend(parse_vcf(path.read_text(errors="replace")))
+
+    def vip_addresses(self) -> set[str]:
+        """Emails of contacts marked vip = true (Elen tells you when they write)."""
+        return {e.lower() for c in self.contacts if c.get("vip") for e in c["emails"]}
 
     def known_addresses(self) -> set[str]:
         out: set[str] = set()

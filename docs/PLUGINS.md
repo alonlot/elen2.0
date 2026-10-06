@@ -134,6 +134,7 @@ class JiraPlugin(Plugin):
 | `async setup()`               | connect, check config. Raise to disable the plugin. |
 | `async teardown()`            | close connections |
 | `prompt_hint() -> str`        | one line for the system prompt ("accounts: work, home") |
+| `async watch(now) -> [Notice]` | called about once a minute: return things to tell the user without being asked (see below) |
 | `known_addresses() -> set`    | trusted addresses / numbers for the recipient check |
 | `self.config`                 | your `[plugins.<name>]` table |
 | `self.log`                    | logger (shows in `journalctl --user -u elen`) |
@@ -147,7 +148,31 @@ class JiraPlugin(Plugin):
 Blocking libraries (imaplib, requests, caldav): call them with
 `await asyncio.to_thread(func, ...)` so Elen does not freeze.
 
-## 7. A full example: send a message to a chat server
+## 7. Proactive notices
+
+A plugin can tell the user things without being asked. Implement `watch()`:
+
+```python
+from elen.plugins import Notice
+
+class ServerPlugin(Plugin):
+    name = "server"
+
+    async def watch(self, now):
+        if await self.disk_almost_full():
+            return [Notice(key=f"disk:{now:%Y-%m-%d}", text="The backup disk is 95% full.",
+                           visual={"type": "stats", "title": "Backup disk", "items": [{"label": "Used", "value": 95, "unit": "%", "percent": 95}]})]
+        return []
+```
+
+- `key`: a notice with the same key is delivered only once (keys are kept for 7 days).
+- The text appears in the chat (and at the bottom of the screen when the chat is closed), the
+  visual on screen, and the text is spoken outside quiet hours.
+- `baseline=True`: on the first check after Elen starts, the key is only remembered (use it for
+  "new mail", so old unread mail is not announced after a restart).
+- `watch()` runs about once a minute: cache slow lookups.
+
+## 8. A full example: send a message to a chat server
 
 ```python
 import httpx

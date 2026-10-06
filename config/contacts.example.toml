@@ -7,4 +7,5 @@ aliases = ["Dana"]
 emails = ["dana@example.com"]
 phones = ["+972500000000"]
 notes = "Acme, project manager"
+vip = true                       # Elen tells you when Dana writes
 # photo = "~/Pictures/dana.jpg"   # shown on the contact card

@@ -26,7 +26,7 @@ from typing import Any
 
 import httpx
 
-from elen.plugins import Plugin, ToolResult, tool
+from elen.plugins import Notice, Plugin, ToolResult, tool
 from elen.secrets import resolve_secret
 
 
@@ -89,6 +89,40 @@ class CalendarPlugin(Plugin):
         if not self.sources:
             raise RuntimeError("no [[plugins.calendar.sources]] configured")
         import icalendar  # noqa: F401  (fail early with a clear message)
+
+    async def watch(self, now: datetime) -> list[Notice]:
+        """Reminder before each meeting (built from the calendar data, no LLM)."""
+        minutes = int(self.ctx.setting("proactive", "meeting_reminder_minutes", default=10) or 0)
+        if minutes <= 0:
+            return []
+        cache = getattr(self, "_watch_cache", None)
+        if cache is None or (now - cache[0]).total_seconds() > 300:
+            events, _ = await asyncio.to_thread(self._read_all, now - timedelta(minutes=1), now + timedelta(hours=2))
+            cache = (now, events)
+            self._watch_cache = cache
+        notices = []
+        for ev in cache[1]:
+            if ev["all_day"]:
+                continue
+            start = datetime.fromisoformat(ev["start_iso"])
+            left = (start - now).total_seconds() / 60
+            if 0 <= left <= minutes:
+                when = f"in {max(1, round(left))} minutes" if left >= 1 else "now"
+                text = f"Reminder: {ev['title']} starts {when}, at {ev['start']}."
+                if ev["location"]:
+                    text += f" Location: {ev['location']}."
+                fields = [{"label": "Starts", "value": f"{ev['start']} ({when})"}, {"label": "Ends", "value": ev["end"]}]
+                if ev["location"]:
+                    fields.append({"label": "Where", "value": ev["location"]})
+                fields.append({"label": "Calendar", "value": ev["calendar"]})
+                notices.append(
+                    Notice(
+                        key=f"cal:{ev['calendar']}:{ev['title']}:{ev['start_iso']}",
+                        text=text,
+                        visual={"type": "card", "title": ev["title"], "subtitle": "Upcoming meeting", "fields": fields},
+                    )
+                )
+        return notices
 
     def prompt_hint(self) -> str:
         return "calendars: " + ", ".join(f"{s.get('name')} ({s.get('type')})" for s in self.sources)

@@ -120,6 +120,19 @@ Tool use is the hard part for a model: small local models (below about 14B param
 pick wrong tools or invent arguments. The guard still stops every action for your approval,
 but a stronger model makes far fewer mistakes.
 
+## Proactive: Elen speaks first
+
+- **Meeting reminders**: 10 minutes before each meeting, a card on screen, a line in the chat
+  and a spoken reminder. Built straight from your calendar, without the LLM, so it cannot be
+  invented.
+- **VIP mail**: when a contact with `vip = true` (or an address in `[proactive] vip_senders`)
+  writes, Elen tells you the sender and subject. Mail that was already there when Elen started
+  is not announced.
+- **Morning briefing**: once a day, the first time you are logged in between 06:00 and 12:00,
+  Elen gives a short briefing on screen (calendar, important mail, things to remember).
+- **Quiet hours** (default 22:00 to 07:00): notices are shown but not spoken.
+- Plugins can add their own notices with a `watch()` method (see docs/PLUGINS.md).
+
 ## Wake word: "Hey Ellen"
 
 ```bash

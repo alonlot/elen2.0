@@ -30,6 +30,7 @@ import shutil
 import tempfile
 import time
 import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
@@ -37,7 +38,7 @@ from .config import config_dir, data_dir, deep_merge, load_config
 from .guard import AllowRules, Confirmation, Guard
 from .history import History
 from .llm import LLMError, ToolCall, make_provider
-from .plugins import Plugin, PluginContext, ToolResult, ToolSpec, tool
+from .plugins import Notice, Plugin, PluginContext, ToolResult, ToolSpec, tool
 from .plugins.loader import BUILTIN, discover
 from .prompts import build_system_prompt
 from .stt import Listener, has_speech, write_wav
@@ -163,6 +164,7 @@ class Elen:
         self._turn_visuals: list[dict[str, str]] | None = None
         self.wake = None
         self.wake_error = ""
+        self.proactive = None
         self._configure()
 
     # ----- setup -------------------------------------------------------
@@ -216,6 +218,11 @@ class Elen:
         await self._load_plugins()
         if self.config["wake"].get("enabled"):
             self._start_wake()
+        if self.config["proactive"].get("enabled", True):
+            from .proactive import Proactive
+
+            self.proactive = Proactive(self)
+            self.proactive.start()
 
     def _start_wake(self) -> bool:
         from .wake import WakeListener, make_engine
@@ -269,6 +276,9 @@ class Elen:
                 return
 
     async def stop(self) -> None:
+        if self.proactive is not None:
+            await self.proactive.stop()
+            self.proactive = None
         if self.wake is not None:
             await self.wake.stop()
             self.wake = None
@@ -351,19 +361,19 @@ class Elen:
         self.emit("message", item)
 
     # ----- chat --------------------------------------------------------
-    def submit(self, text: str, source: str = "text") -> str:
+    def submit(self, text: str, source: str = "text", display_text: str = "") -> str:
         """Queue a user message. Returns a request id at once."""
         rid = uuid.uuid4().hex[:12]
-        self._spawn(self.ask(text, source=source, request_id=rid))
+        self._spawn(self.ask(text, source=source, request_id=rid, display_text=display_text))
         return rid
 
-    async def ask(self, text: str, source: str = "text", request_id: str = "") -> str:
+    async def ask(self, text: str, source: str = "text", request_id: str = "", display_text: str = "") -> str:
         text = (text or "").strip()
         if not text:
             return ""
         async with self._lock:
             self._current = asyncio.current_task()
-            item = self.history.add_display("user", text, source=source)
+            item = self.history.add_display("user", display_text or text, source=source)
             self.history.save()
             self.emit("message", item)
             self.set_state("thinking")
@@ -405,7 +415,26 @@ class Elen:
 
     def _should_speak(self, source: str) -> bool:
         speak_on = self.config["tts"].get("speak_on", "voice")
+        if source == "briefing":
+            return self.speaker.enabled and bool(self.config["proactive"].get("speak", True)) \
+                and not (self.proactive and self.proactive.quiet(datetime.now().astimezone()))
         return self.speaker.enabled and (speak_on == "always" or (speak_on == "voice" and source == "voice"))
+
+    async def deliver_notice(self, notice: Notice, quiet: bool = False) -> None:
+        """Tell the user something without being asked (from a plugin's watch())."""
+        meta: dict[str, Any] = {"source": "proactive"}
+        if notice.visual and self.config["ui"].get("auto_visualize", True):
+            visual_id = await self.show_visual(notice.visual)
+            spec = self.history.visuals.get(visual_id, {})
+            meta["visuals"] = [{"id": visual_id, "title": spec.get("title") or spec.get("type", "")}]
+        item = self.history.add_display("assistant", notice.text, **meta)
+        self.history.save()
+        self.emit("message", item)
+        if notice.speak and not quiet and self.config["proactive"].get("speak", True) and self.speaker.enabled \
+                and not self._lock.locked():
+            self.speaker.begin()
+            self.speaker.feed(notice.text + " ")
+            self.speaker.flush()
 
     def cancel(self) -> bool:
         """Stop the running request, speech and recording."""

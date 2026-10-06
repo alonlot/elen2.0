@@ -29,7 +29,7 @@ from email.policy import default as default_policy
 from html import unescape
 from typing import Any
 
-from elen.plugins import Plugin, ToolResult, tool
+from elen.plugins import Notice, Plugin, ToolResult, tool
 from elen.secrets import resolve_secret
 
 
@@ -105,6 +105,45 @@ class EmailPlugin(Plugin):
 
     def known_addresses(self) -> set[str]:
         return {a.address for a in self.accounts.values()}
+
+    def _vips(self) -> set[str]:
+        vips = {v.lower() for v in self.ctx.setting("proactive", "vip_senders", default=[]) or []}
+        contacts = self.ctx.core.plugins.get("contacts")
+        if contacts is not None and hasattr(contacts, "vip_addresses"):
+            vips |= contacts.vip_addresses()
+        return vips
+
+    async def watch(self, now) -> list[Notice]:
+        """New unread mail from VIP senders (contacts with vip = true, or [proactive] vip_senders)."""
+        if not self.ctx.setting("proactive", "mail_watch", default=True):
+            return []
+        every = float(self.ctx.setting("proactive", "mail_check_minutes", default=5)) * 60
+        last = getattr(self, "_last_mail_check", 0.0)
+        if time.time() - last < every:
+            return []
+        self._last_mail_check = time.time()
+        vips = self._vips()
+        if not vips:
+            return []
+        notices = []
+        for acc in self.accounts.values():
+            try:
+                items = await asyncio.to_thread(self._fetch_headers, acc, "INBOX", ["UNSEEN"], 30)
+            except Exception as e:  # noqa: BLE001
+                self.log.warning("mail check of %s failed: %s", acc.name, e)
+                continue
+            for m in items:
+                name, addr = email.utils.parseaddr(m["from"])
+                if addr.lower() not in vips:
+                    continue
+                notices.append(
+                    Notice(
+                        key=f"mail:{acc.name}:{m['uid']}",
+                        text=f"New mail from {name or addr}: {m['subject'] or '(no subject)'}",
+                        baseline=True,  # after a restart, do not announce mail that was already there
+                    )
+                )
+        return notices
 
     def account(self, name: str = "") -> Account:
         if name and name in self.accounts:

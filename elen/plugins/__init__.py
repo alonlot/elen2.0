@@ -53,6 +53,25 @@ class ToolResult:
 
 
 @dataclass
+class Notice:
+    """Something Elen tells the user without being asked (returned by Plugin.watch).
+
+    key        unique id; a notice with the same key is delivered only once
+    text       one or two sentences, shown in the chat and spoken
+    visual     optional visual spec, shown on screen
+    speak      speak it (outside quiet hours, when speech is on)
+    baseline   True: on the first check after start, only remember the key and do
+               not deliver (for example old unread mail)
+    """
+
+    key: str
+    text: str
+    visual: dict[str, Any] | None = None
+    speak: bool = True
+    baseline: bool = False
+
+
+@dataclass
 class ToolSpec:
     plugin: str
     name: str
@@ -198,6 +217,11 @@ class Plugin:
         """Optional extra line for the system prompt (for example account names)."""
         return ""
 
+    async def watch(self, now) -> list["Notice"]:
+        """Optional: called about once a minute. Return notices to show the user
+        without being asked (reminders, alerts). Keep it fast; cache slow lookups."""
+        return []
+
     def known_addresses(self) -> set[str]:
         """Email addresses / phone numbers this plugin knows to be real contacts.
 
@@ -240,4 +264,4 @@ class Plugin:
         return specs
 
 
-__all__ = ["Plugin", "PluginContext", "ToolResult", "ToolSpec", "tool", "RISK_LEVELS"]
+__all__ = ["Notice", "Plugin", "PluginContext", "ToolResult", "ToolSpec", "tool", "RISK_LEVELS"]

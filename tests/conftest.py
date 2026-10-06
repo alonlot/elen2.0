@@ -45,7 +45,7 @@ def make_core(env):
     from elen.core import Elen
 
     async def factory(responses, **overrides):
-        cfg = deep_merge(DEFAULTS, overrides)
+        cfg = deep_merge(deep_merge(DEFAULTS, {"proactive": {"enabled": False}}), overrides)
         core = Elen(cfg)
         core.brain = ScriptedProvider(responses)
         await core.start()
