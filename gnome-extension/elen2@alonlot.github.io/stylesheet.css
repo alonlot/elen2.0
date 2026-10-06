@@ -73,6 +73,7 @@
   border: 1px solid rgba(62, 232, 255, 0.45);
   background-color: rgba(62, 232, 255, 0.08);
 }
+.elen-icon-button.small { padding: 5px; margin-left: 8px; }
 .elen-icon-button:hover { background-color: rgba(62, 232, 255, 0.22); }
 .elen-icon-button.active {
   color: #ff6a78; border-color: #ff4a5a;

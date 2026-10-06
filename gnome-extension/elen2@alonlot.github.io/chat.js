@@ -30,9 +30,10 @@ function plain(text) {
 
 export const ElenIndicator = GObject.registerClass(
 class ElenIndicator extends PanelMenu.Button {
-    _init(client) {
+    _init(client, openPrefs) {
         super._init(0.5, 'Elen 2.0', false);
         this._client = client;
+        this._openPrefs = openPrefs;
         this._ids = new Set();
         this._state = 'offline';
 
@@ -67,8 +68,18 @@ class ElenIndicator extends PanelMenu.Button {
 
         const header = new St.BoxLayout({style_class: 'elen-chat-header'});
         header.add_child(new St.Label({text: 'E L E N   2 . 0', style_class: 'elen-chat-title', x_expand: true}));
-        this._status = new St.Label({text: STATE_TEXT.offline, style_class: 'elen-chat-status'});
+        this._status = new St.Label({text: STATE_TEXT.offline, style_class: 'elen-chat-status', y_align: Clutter.ActorAlign.CENTER});
         header.add_child(this._status);
+        const gear = new St.Button({
+            style_class: 'elen-icon-button small',
+            can_focus: true,
+            child: new St.Icon({icon_name: 'emblem-system-symbolic', icon_size: 14}),
+        });
+        gear.connect('clicked', () => {
+            this.menu.close();
+            this._openPrefs?.();
+        });
+        header.add_child(gear);
         root.add_child(header);
 
         this._scroll = new St.ScrollView({

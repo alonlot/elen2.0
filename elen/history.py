@@ -21,6 +21,10 @@ class History:
         self.max_tool_chars = max_tool_chars
         self.display: list[dict[str, Any]] = []
         self.transcript: list[dict[str, Any]] = []
+        # Tool results from claude -p turns (they are not in the transcript).
+        self.data_texts: list[str] = []
+        # Small state, for example the claude -p session id.
+        self.meta: dict[str, Any] = {}
         self.load()
 
     def load(self) -> None:
@@ -28,21 +32,31 @@ class History:
             data = json.loads(self.path.read_text(encoding="utf-8"))
             self.display = data.get("display", [])
             self.transcript = data.get("transcript", [])
+            self.data_texts = data.get("data_texts", [])
+            self.meta = data.get("meta", {})
         except (OSError, ValueError):
-            self.display, self.transcript = [], []
+            self.display, self.transcript, self.data_texts, self.meta = [], [], [], {}
 
     def save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.path.with_suffix(".tmp")
         tmp.write_text(
-            json.dumps({"display": self.display, "transcript": self.transcript}, ensure_ascii=False),
+            json.dumps(
+                {
+                    "display": self.display,
+                    "transcript": self.transcript,
+                    "data_texts": self.data_texts[-200:],
+                    "meta": self.meta,
+                },
+                ensure_ascii=False,
+            ),
             encoding="utf-8",
         )
         tmp.chmod(0o600)
         tmp.replace(self.path)
 
     def clear(self) -> None:
-        self.display, self.transcript = [], []
+        self.display, self.transcript, self.data_texts, self.meta = [], [], [], {}
         self.save()
 
     def add_display(self, role: str, text: str, **meta: Any) -> dict[str, Any]:
@@ -77,4 +91,14 @@ class History:
         ]
 
     def tool_texts(self) -> list[str]:
-        return [m.get("content") or "" for m in self.transcript if m.get("role") == "tool"]
+        texts = [m.get("content") or "" for m in self.transcript if m.get("role") == "tool"]
+        return texts + self.data_texts
+
+    def recap(self, limit: int = 12, skip_last: bool = True) -> str:
+        """Recent chat as plain text, to start a new claude -p session with context."""
+        shown = self.display[:-1] if skip_last else self.display
+        items = [m for m in shown if m["role"] in ("user", "assistant")][-limit:]
+        if not items:
+            return ""
+        lines = [f"{'User' if m['role'] == 'user' else 'Elen'}: {m['text'][:1500]}" for m in items]
+        return "Earlier conversation, for context:\n" + "\n".join(lines) + "\n\nNew message:\n"

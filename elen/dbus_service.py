@@ -71,6 +71,24 @@ class ElenInterface(ServiceInterface):
         return json.dumps(self.core.status())
 
     @method()
+    def GetModels(self) -> "s":
+        from .config_edit import get_model_settings
+
+        return json.dumps(get_model_settings())
+
+    @method()
+    def SetModels(self, settings_json: "s") -> "s":
+        """Save model / URL / key settings to config.toml, then reload."""
+        from .config_edit import apply_model_settings
+
+        try:
+            apply_model_settings(json.loads(settings_json))
+        except (ValueError, OSError) as e:
+            return json.dumps({"ok": False, "error": str(e)})
+        self.core._spawn(self._reload())
+        return json.dumps({"ok": True})
+
+    @method()
     def Reload(self) -> "s":
         self.core._spawn(self._reload())
         return "reloading"

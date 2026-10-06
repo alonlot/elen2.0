@@ -13,8 +13,12 @@ A Jarvis-like personal assistant for Ubuntu 24.04 (GNOME 46, Wayland).
   tables, text, screenshots. Any plugin can show any of these.
 - **Screen vision**: Elen can take a screenshot and ask the vision model about it when it
   decides that helps ("what is this error?").
-- **Separate models** for the brain, for vision and for speech to text. Claude, OpenAI, Ollama
-  or any OpenAI-compatible server.
+- **The brain is `claude -p`** (Claude Code in headless mode), with your Claude Code login.
+  Elen's plugins reach it as MCP tools, so every action still goes through Elen's guard.
+- **Separate models** for the brain, vision, the rule checker and speech to text. Each one has
+  a free-text model name and a custom URL. Change them in the settings window (gear button in
+  the chat) or with `elen set brain.model opus`. Other brains: Claude API, OpenAI, Ollama, or
+  any OpenAI-compatible server.
 - **Plugins** give Elen tools: mail (any IMAP/SMTP server), calendar (CalDAV / ICS), contacts,
   memory, desktop control, and full PC control through `claude -p`. Adding your own plugin is
   one Python file. See [docs/PLUGINS.md](docs/PLUGINS.md).
@@ -34,8 +38,18 @@ A Jarvis-like personal assistant for Ubuntu 24.04 (GNOME 46, Wayland).
  │ screenshots (Shell API)      │            │ plugins: mail, calendar, contacts...  │
  │ shortcuts Super+J / +Shift+J │            │ STT recorder + transcriber, TTS       │
  └──────────────────────────────┘            │ vision model                          │
+                                              └───────────────┬──────────────────────┘
+                                                  Unix socket │ (guarded tool calls)
+                                              ┌───────────────┴──────────────────────┐
+                                              │ claude -p  (the agent)                │
+                                              │   └─ MCP server "elen" (mcp_bridge)   │
                                               └──────────────────────────────────────┘
 ```
+
+With the default brain, each message starts `claude -p`. It has **no** built-in Bash, Edit or
+Write tools; its only tools are Elen's plugins (`mcp__elen__...`). Each tool call goes back to
+the daemon, which runs the guard (approval dialog, recipient check, rule check) before
+anything happens. The chat keeps one `claude -p` session (`--resume`) until you press CLEAR.
 
 GNOME on Wayland does not let a normal app place its own window at the top of the screen. For
 this reason the UI is a GNOME Shell extension, and the logic is a separate daemon. The
@@ -50,11 +64,9 @@ git clone https://github.com/alonlot/elen2.0 && cd elen2.0
 
 Then:
 
-1. Put your keys in `~/.config/elen/env`:
-   ```
-   ANTHROPIC_API_KEY=sk-ant-...
-   OPENAI_API_KEY=sk-...        # only for the default voice transcription
-   ```
+1. Install Claude Code and log in once: `npm install -g @anthropic-ai/claude-code`, then `claude`.
+   For the default voice transcription, put `OPENAI_API_KEY=sk-...` in `~/.config/elen/env`
+   (or choose `faster_whisper` for offline speech to text).
 2. Edit `~/.config/elen/config.toml` (models, mail, calendar, plugins).
 3. `systemctl --user restart elen`
 4. Log out and log in again. GNOME on Wayland loads a new extension only at login. Then:
@@ -65,16 +77,35 @@ Logs: `journalctl --user -u elen -f`
 
 ## Configure the models
 
-All in `~/.config/elen/config.toml`:
+In the settings window (gear button in the chat header, or the Extensions app), with
+`elen set section.key value`, or in `~/.config/elen/config.toml`:
 
-| Section    | What it does                         | Examples |
-|------------|--------------------------------------|----------|
-| `[brain]`  | thinks, picks tools, writes replies  | `anthropic` + `claude-opus-5-5`; `ollama` + `qwen2.5:14b` |
-| `[vision]` | looks at screenshots                 | `anthropic` + `claude-opus-5-5`; `openai` + `gpt-4o` |
-| `[stt]`    | speech to text                       | `openai` + `whisper-1`; Groq; `faster_whisper` (offline); any command |
-| `[tts]`    | optional spoken replies              | `spd-say`, `piper`, `espeak-ng` |
+| Section     | What it does                         | Default |
+|-------------|--------------------------------------|---------|
+| `[brain]`   | the agent: thinks, picks tools, writes replies | `claude_cli` (`claude -p`) |
+| `[vision]`  | looks at screenshots                 | `claude_cli` |
+| `[checker]` | checks actions and replies against your rules | brain settings, effort low |
+| `[stt]`     | speech to text                       | `openai` + `whisper-1` |
+| `[tts]`     | optional spoken replies              | off |
 
-For Claude, `effort = "low"` gives faster answers; `"medium"` is the default.
+Every model section has:
+
+- `provider`: `claude_cli`, `anthropic`, `openai` or `ollama` (`[stt]`: `openai`,
+  `faster_whisper`, `command`, `none`).
+- `model`: free text. For `claude_cli` it goes to `--model`: an alias (`opus`, `sonnet`,
+  `haiku`), a full id (`claude-opus-5-5`), or any name your custom server accepts.
+- `base_url`: custom URL. For `claude_cli`, Elen sets `ANTHROPIC_BASE_URL` for the CLI, so a
+  gateway or proxy (for example LiteLLM) works. For `openai`, it is the API base.
+- `api_key` / `auth_token`: empty for `claude_cli` means "use my `claude` login".
+
+Examples:
+
+```bash
+elen set brain.model sonnet                      # faster brain
+elen set brain.base_url http://localhost:4000    # your own gateway
+elen set brain.effort low
+systemctl --user restart elen                    # the settings window restarts by itself
+```
 
 ## Guard rails
 
@@ -137,7 +168,8 @@ cheaper model: `[checker]` in the config. To turn the checks off: `[guard] rule_
 
 ## Full PC control with Claude Code
 
-Enable `[plugins.claude_code]` and install the Claude Code CLI. Elen can then hand a task to
+The brain is `claude -p` without its own shell and file tools. For real computer work, enable
+`[plugins.claude_code]`. Elen can then hand a task to
 `claude -p "<task>" --dangerously-skip-permissions`. Inside that task, Claude Code runs
 commands and edits files **without asking**. Elen still shows you the exact task text (you
 can edit it) and asks once before it starts. Use this plugin only if you understand that an

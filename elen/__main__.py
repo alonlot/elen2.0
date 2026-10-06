@@ -5,6 +5,10 @@
   elen ask TEXT   ask one question
   elen status     show models, plugins and tools
   elen config     print the config file path
+  elen set KEY VALUE   change a setting, for example:
+                  elen set brain.provider claude_cli
+                  elen set brain.model opus
+                  elen set brain.base_url https://my-gateway.example.com
 """
 
 from __future__ import annotations
@@ -53,6 +57,11 @@ def main() -> None:
             print(json.dumps(core.status(), indent=2))
 
         asyncio.run(show())
+    elif cmd == "set" and len(argv) == 3:
+        from .config_edit import set_dotted
+
+        path = set_dotted(argv[1], argv[2])
+        print(f"Saved to {path}. Restart Elen: systemctl --user restart elen")
     elif cmd == "config":
         from .config import ensure_user_config
 

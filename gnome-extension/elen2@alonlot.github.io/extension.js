@@ -23,7 +23,7 @@ export default class ElenExtension extends Extension {
             (kind, data) => this._onEvent(kind, data),
             connected => this._onConnection(connected));
         this._confirm = new ConfirmManager(this._client);
-        this._indicator = new ElenIndicator(this._client);
+        this._indicator = new ElenIndicator(this._client, () => this.openPreferences());
         Main.panel.addToStatusArea(this.uuid, this._indicator, 1, 'center');
 
         const modes = Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW | Shell.ActionMode.POPUP;

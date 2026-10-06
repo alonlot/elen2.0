@@ -20,6 +20,8 @@ const IFACE = `
     </method>
     <method name="GetStatus"><arg type="s" direction="out"/></method>
     <method name="Reload"><arg type="s" direction="out"/></method>
+    <method name="GetModels"><arg type="s" direction="out"/></method>
+    <method name="SetModels"><arg type="s" direction="in"/><arg type="s" direction="out"/></method>
     <signal name="Event"><arg type="s" name="kind"/><arg type="s" name="payload"/></signal>
   </interface>
 </node>`;

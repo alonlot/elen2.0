@@ -21,6 +21,11 @@ if ((${#MISSING[@]})); then
   sudo apt-get install -y "${MISSING[@]}"
 fi
 
+if ! command -v claude >/dev/null 2>&1; then
+  say "The 'claude' CLI is not installed. Elen's default brain is 'claude -p'."
+  say "Install it: npm install -g @anthropic-ai/claude-code   then run 'claude' once to log in."
+fi
+
 say "Creating Python environment in $VENV"
 mkdir -p "$PREFIX"
 python3 -m venv "$VENV"
@@ -32,6 +37,13 @@ mkdir -p "$CONF/plugins"
 [ -f "$CONF/config.toml" ] || install -m 600 "$REPO/config/config.example.toml" "$CONF/config.toml"
 [ -f "$CONF/contacts.toml" ] || install -m 600 "$REPO/config/contacts.example.toml" "$CONF/contacts.toml"
 [ -f "$CONF/env" ] || install -m 600 "$REPO/config/env.example" "$CONF/env"
+
+if CLAUDE_BIN="$(command -v claude)"; then
+  # The systemd service may not have npm's bin folder on its PATH: use the full path.
+  for key in brain.binary vision.binary plugins.claude_code.binary; do
+    ELEN_CONFIG="$CONF/config.toml" "$VENV/bin/elen" set "$key" "$CLAUDE_BIN" >/dev/null
+  done
+fi
 
 say "Service files"
 mkdir -p "$HOME/.config/systemd/user" "$HOME/.local/share/dbus-1/services"
@@ -55,8 +67,9 @@ cat <<MSG
 Elen 2.0 is installed.
 
 Next steps:
- 1. Put your API keys in $CONF/env   (ANTHROPIC_API_KEY=..., OPENAI_API_KEY=... for voice)
- 2. Edit $CONF/config.toml           (models, mail, calendar, plugins)
+ 1. Log in to Claude Code once: run 'claude' (the brain is 'claude -p').
+    For voice, put OPENAI_API_KEY=... in $CONF/env (or pick another STT provider).
+ 2. Edit $CONF/config.toml or use the gear button in the chat (models, URLs, mail, calendar)
  3. systemctl --user restart elen
  4. Log out and log in again (GNOME on Wayland loads new extensions only at login).
     Then run: gnome-extensions enable $UUID
