@@ -1,0 +1,9 @@
+{
+  "uuid": "elen2@alonlot.github.io",
+  "name": "Elen 2.0",
+  "description": "Jarvis-like personal assistant. Orb in the top middle of the panel, chat with history, voice, on-screen HUD visuals and approval dialogs. Needs the Elen daemon (see README).",
+  "shell-version": ["45", "46", "47", "48"],
+  "settings-schema": "org.gnome.shell.extensions.elen",
+  "url": "https://github.com/alonlot/elen2.0",
+  "version": 2
+}

@@ -1,0 +1,115 @@
+"""Provider for any OpenAI-compatible chat API.
+
+This covers OpenAI, Ollama (http://localhost:11434/v1), LM Studio, vLLM,
+llama.cpp server, Groq, OpenRouter and similar services.
+"""
+
+from __future__ import annotations
+
+import json
+from typing import Any
+
+import httpx
+
+from ..secrets import resolve_secret
+from .base import LLMError, LLMResponse, ToolCall
+
+
+def _user_content(content: Any) -> Any:
+    if isinstance(content, str):
+        return content
+    parts = []
+    for part in content:
+        if part.get("type") == "image":
+            url = f"data:{part.get('media_type', 'image/png')};base64,{part['data']}"
+            parts.append({"type": "image_url", "image_url": {"url": url}})
+        else:
+            parts.append({"type": "text", "text": part.get("text", "")})
+    return parts
+
+
+def to_openai_messages(system: str, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = [{"role": "system", "content": system}]
+    for msg in messages:
+        role = msg["role"]
+        if role == "user":
+            out.append({"role": "user", "content": _user_content(msg["content"])})
+        elif role == "assistant":
+            item: dict[str, Any] = {"role": "assistant", "content": msg.get("content") or ""}
+            if msg.get("tool_calls"):
+                item["tool_calls"] = [
+                    {
+                        "id": c["id"],
+                        "type": "function",
+                        "function": {
+                            "name": c["name"],
+                            "arguments": json.dumps(c.get("arguments") or {}),
+                        },
+                    }
+                    for c in msg["tool_calls"]
+                ]
+            out.append(item)
+        elif role == "tool":
+            out.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": msg["tool_call_id"],
+                    "content": msg.get("content") or "",
+                }
+            )
+    return out
+
+
+class OpenAICompatProvider:
+    name = "openai"
+
+    def __init__(self, cfg: dict[str, Any]):
+        self.cfg = cfg
+        self.model = cfg.get("model") or "gpt-4o"
+        self.base_url = (cfg.get("base_url") or "https://api.openai.com/v1").rstrip("/")
+        self.api_key = resolve_secret(cfg.get("api_key"))
+
+    async def chat(self, system, messages, tools=None) -> LLMResponse:
+        body: dict[str, Any] = {
+            "model": self.model,
+            "messages": to_openai_messages(system, messages),
+            "max_tokens": int(self.cfg.get("max_tokens") or 4000),
+        }
+        if tools:
+            body["tools"] = [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": t["name"],
+                        "description": t["description"],
+                        "parameters": t["parameters"],
+                    },
+                }
+                for t in tools
+            ]
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        try:
+            async with httpx.AsyncClient(timeout=300) as client:
+                r = await client.post(f"{self.base_url}/chat/completions", json=body, headers=headers)
+        except httpx.HTTPError as e:
+            raise LLMError(f"Cannot reach {self.base_url}: {e}") from e
+        if r.status_code >= 400:
+            raise LLMError(f"Model API error {r.status_code}: {r.text[:500]}")
+        data = r.json()
+        choice = (data.get("choices") or [{}])[0]
+        msg = choice.get("message") or {}
+        calls = []
+        for c in msg.get("tool_calls") or []:
+            fn = c.get("function") or {}
+            try:
+                args = json.loads(fn.get("arguments") or "{}")
+            except json.JSONDecodeError:
+                args = {}
+            calls.append(ToolCall(c.get("id") or fn.get("name", "call"), fn.get("name", ""), args))
+        return LLMResponse(
+            text=(msg.get("content") or "").strip(),
+            tool_calls=calls,
+            stop_reason=choice.get("finish_reason") or "",
+        )

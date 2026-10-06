@@ -1,0 +1,9 @@
+# Elen contacts: ~/.config/elen/contacts.toml
+# Elen uses this list to find people and to check that a recipient is real.
+
+[[contact]]
+name = "Dana Levi"
+aliases = ["Dana"]
+emails = ["dana@example.com"]
+phones = ["+972500000000"]
+notes = "Acme, project manager"

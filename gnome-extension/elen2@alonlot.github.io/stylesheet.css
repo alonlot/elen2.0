@@ -1,0 +1,235 @@
+/* Elen 2.0: Jarvis-style theme. Cyan = info, amber = busy, red = danger. */
+
+/* ---------- panel ---------- */
+.elen-panel-box { spacing: 6px; padding: 0 4px; }
+.elen-panel-label {
+  font-family: monospace; font-weight: bold; font-size: 10pt; color: #3ee8ff;
+}
+
+/* ---------- chat popup ---------- */
+.elen-popup .popup-menu-content {
+  background-color: rgba(3, 14, 22, 0.96);
+  border: 1px solid rgba(62, 232, 255, 0.55);
+  border-radius: 18px;
+  box-shadow: 0 0 28px rgba(62, 232, 255, 0.28);
+  padding: 0 0 8px 0;
+}
+.elen-chat-item, .elen-chat-item:hover, .elen-chat-item:focus {
+  background-color: transparent; padding: 0; margin: 0;
+}
+.elen-chat { width: 560px; spacing: 6px; padding: 0 14px; }
+
+/* Half circle, hanging from the top edge. */
+.elen-clear-tab {
+  width: 104px; height: 40px; margin-top: 0;
+  border-radius: 0 0 52px 52px;
+  border: 1px solid rgba(62, 232, 255, 0.7); border-top-width: 0;
+  background-color: rgba(62, 232, 255, 0.12);
+  color: #3ee8ff; font-family: monospace; font-size: 8pt; font-weight: bold;
+  padding-top: 6px;
+  box-shadow: 0 6px 14px rgba(62, 232, 255, 0.25);
+  transition-duration: 150ms;
+}
+.elen-clear-tab:hover, .elen-clear-tab:focus {
+  background-color: rgba(255, 70, 90, 0.28);
+  border-color: #ff4a5a; color: #ff8792;
+  box-shadow: 0 6px 18px rgba(255, 70, 90, 0.4);
+}
+.elen-clear-tab:active { background-color: rgba(255, 70, 90, 0.5); }
+
+.elen-chat-header { padding: 4px 2px; }
+.elen-chat-title { font-family: monospace; font-weight: bold; font-size: 11pt; color: #bff6ff; }
+.elen-chat-status { font-family: monospace; font-size: 8pt; color: #3ee8ff; }
+
+.elen-chat-scroll {
+  height: 430px;
+  border-top: 1px solid rgba(62, 232, 255, 0.25);
+  border-bottom: 1px solid rgba(62, 232, 255, 0.25);
+}
+.elen-chat-messages { spacing: 8px; padding: 10px 2px; }
+
+.elen-msg { padding: 8px 12px; border-radius: 12px; font-size: 10.5pt; max-width: 440px; }
+.elen-msg.user {
+  background-color: rgba(62, 232, 255, 0.16); color: #e9fdff;
+  border: 1px solid rgba(62, 232, 255, 0.35);
+}
+.elen-msg.elen {
+  background-color: rgba(255, 255, 255, 0.05); color: #d7f7ff;
+  border-left: 3px solid #3ee8ff;
+}
+.elen-msg.elen.warned { border-left-color: #ffb547; }
+.elen-msg.elen.error { border-left-color: #ff4a5a; color: #ffc4ca; }
+.elen-msg.activity { color: rgba(191, 246, 255, 0.55); font-size: 9pt; padding: 0 12px; font-family: monospace; }
+
+.elen-chat-input { spacing: 6px; padding-top: 4px; }
+.elen-entry {
+  background-color: rgba(62, 232, 255, 0.07);
+  border: 1px solid rgba(62, 232, 255, 0.45); border-radius: 12px;
+  color: #e9fdff; padding: 8px 12px; caret-color: #3ee8ff;
+}
+.elen-entry:focus { border-color: #3ee8ff; box-shadow: 0 0 8px rgba(62, 232, 255, 0.4); }
+.elen-icon-button {
+  border-radius: 99px; padding: 9px; color: #3ee8ff;
+  border: 1px solid rgba(62, 232, 255, 0.45);
+  background-color: rgba(62, 232, 255, 0.08);
+}
+.elen-icon-button:hover { background-color: rgba(62, 232, 255, 0.22); }
+.elen-icon-button.active {
+  color: #ff6a78; border-color: #ff4a5a;
+  background-color: rgba(255, 70, 90, 0.25);
+  box-shadow: 0 0 12px rgba(255, 70, 90, 0.6);
+}
+
+/* ---------- HUD ---------- */
+.elen-hud {
+  background-color: rgba(2, 12, 20, 0.9);
+  border: 1px solid rgba(62, 232, 255, 0.7);
+  border-radius: 6px 26px 6px 26px;
+  box-shadow: 0 0 40px rgba(62, 232, 255, 0.3);
+  padding: 18px 22px 10px 22px;
+  spacing: 8px;
+  color: #d7f7ff;
+}
+.elen-hud-header { spacing: 14px; }
+.elen-hud-titles { spacing: 2px; }
+.elen-hud-title { font-family: monospace; font-size: 17pt; font-weight: bold; color: #3ee8ff; }
+.elen-hud-subtitle { font-family: monospace; font-size: 9pt; color: rgba(191, 246, 255, 0.7); }
+.elen-hud-close {
+  color: #3ee8ff; padding: 2px 9px; border-radius: 99px;
+  border: 1px solid rgba(62, 232, 255, 0.5);
+}
+.elen-hud-close:hover { color: #ff6a78; border-color: #ff4a5a; }
+.elen-hud-rule { height: 1px; background-color: rgba(62, 232, 255, 0.45); margin: 4px 0; }
+.elen-hud-content { padding: 4px 0; }
+.elen-hud-footer { font-family: monospace; font-size: 7pt; color: rgba(62, 232, 255, 0.45); }
+
+.elen-empty { font-family: monospace; color: rgba(191, 246, 255, 0.6); padding: 20px; }
+.elen-meta { font-family: monospace; font-size: 8.5pt; color: rgba(191, 246, 255, 0.6); }
+.elen-badge {
+  font-family: monospace; font-size: 8pt; font-weight: bold;
+  padding: 2px 8px; border-radius: 99px;
+  border: 1px solid #3ee8ff; color: #3ee8ff;
+}
+.elen-badge.now { border-color: #ffb547; color: #ffb547; background-color: rgba(255, 181, 71, 0.15); }
+.elen-chip {
+  padding: 3px 10px; border-radius: 99px; color: #bff6ff;
+  background-color: rgba(62, 232, 255, 0.12); margin-right: 6px;
+}
+
+/* calendar */
+.elen-cal { spacing: 8px; }
+.elen-cal-allday { spacing: 6px; padding-bottom: 6px; }
+.elen-cal-row { spacing: 12px; }
+.elen-cal-time { width: 64px; }
+.elen-cal-start { font-family: monospace; font-size: 13pt; font-weight: bold; color: #3ee8ff; }
+.elen-cal-end { font-family: monospace; font-size: 9pt; color: rgba(191, 246, 255, 0.55); }
+.elen-cal-line { width: 3px; border-radius: 3px; background-color: rgba(62, 232, 255, 0.35); }
+.elen-cal-line.now { background-color: #ffb547; }
+.elen-cal-line.next { background-color: #3ee8ff; }
+.elen-cal-card {
+  padding: 8px 12px; border-radius: 8px; spacing: 2px;
+  background-color: rgba(62, 232, 255, 0.07);
+}
+.elen-cal-card.now { background-color: rgba(255, 181, 71, 0.13); }
+.elen-cal-card.past { background-color: rgba(255, 255, 255, 0.03); }
+.elen-cal-row.past .elen-cal-title, .elen-cal-row.past .elen-cal-start { color: rgba(191, 246, 255, 0.4); }
+.elen-cal-title { font-size: 12pt; font-weight: bold; color: #e9fdff; }
+.elen-cal-loc { font-size: 9.5pt; color: rgba(191, 246, 255, 0.75); }
+
+/* list */
+.elen-list { spacing: 4px; }
+.elen-list-row {
+  spacing: 12px; padding: 7px 10px; border-radius: 8px;
+  background-color: rgba(62, 232, 255, 0.05);
+}
+.elen-list-row.unread { border-left: 3px solid #3ee8ff; }
+.elen-list-index { font-family: monospace; color: rgba(62, 232, 255, 0.7); width: 26px; }
+.elen-list-title { font-weight: bold; color: #e9fdff; }
+.elen-list-row.unread .elen-list-title { color: #3ee8ff; }
+.elen-list-sub { font-size: 9.5pt; color: rgba(191, 246, 255, 0.7); }
+
+/* stats */
+.elen-stats { spacing: 12px; }
+.elen-stats-row { spacing: 12px; }
+.elen-tile {
+  padding: 12px; border-radius: 10px; spacing: 6px; min-width: 140px;
+  border: 1px solid rgba(62, 232, 255, 0.3);
+  background-color: rgba(62, 232, 255, 0.05);
+}
+.elen-tile-value { font-family: monospace; font-size: 22pt; font-weight: bold; color: #3ee8ff; }
+.elen-tile-ring-value { font-family: monospace; font-size: 13pt; font-weight: bold; color: #e9fdff; }
+.elen-tile-label { font-family: monospace; font-size: 8.5pt; color: rgba(191, 246, 255, 0.75); }
+
+/* table */
+.elen-table { spacing: 2px; }
+.elen-table-head { border-bottom: 1px solid rgba(62, 232, 255, 0.5); padding-bottom: 4px; }
+.elen-table-row { padding: 4px 0; border-bottom: 1px solid rgba(62, 232, 255, 0.1); }
+.elen-table-cell { padding: 0 8px; color: #d7f7ff; }
+.elen-table-cell.head { font-family: monospace; font-size: 8.5pt; color: #3ee8ff; }
+
+/* text, email, image */
+.elen-text-body { font-size: 11pt; color: #e9fdff; }
+.elen-email { spacing: 6px; }
+.elen-email-field { spacing: 10px; }
+.elen-email-key { font-family: monospace; font-size: 8.5pt; color: #3ee8ff; width: 48px; }
+.elen-email-value { color: #d7f7ff; }
+.elen-email-subject { font-size: 14pt; font-weight: bold; color: #e9fdff; padding: 6px 0; }
+.elen-image-view { height: 380px; }
+
+/* panels */
+.elen-panels { spacing: 12px; }
+.elen-panels-row { spacing: 12px; }
+.elen-subpanel {
+  padding: 10px; border-radius: 10px; spacing: 6px;
+  border: 1px solid rgba(62, 232, 255, 0.25);
+}
+.elen-subpanel-title { font-family: monospace; font-size: 9pt; font-weight: bold; color: #3ee8ff; }
+
+/* reply subtitle at the bottom of the screen */
+.elen-toast {
+  background-color: rgba(2, 12, 20, 0.92);
+  border: 1px solid rgba(62, 232, 255, 0.6);
+  border-radius: 16px;
+  padding: 10px 16px;
+  box-shadow: 0 0 20px rgba(62, 232, 255, 0.25);
+}
+.elen-toast.warning { border-color: #ffb547; }
+.elen-toast-text { color: #e9fdff; font-size: 10.5pt; }
+
+/* ---------- approval dialog ---------- */
+.elen-confirm .modal-dialog-content-box { padding: 20px 24px; spacing: 10px; width: 620px; }
+.elen-confirm {
+  background-color: rgba(3, 14, 22, 0.97);
+  border: 1px solid rgba(62, 232, 255, 0.7);
+  box-shadow: 0 0 40px rgba(62, 232, 255, 0.3);
+}
+.elen-confirm-head { spacing: 8px; }
+.elen-confirm-kicker { font-family: monospace; font-size: 9pt; color: #3ee8ff; }
+.elen-confirm-title { font-size: 16pt; font-weight: bold; color: #e9fdff; }
+.elen-risk { font-family: monospace; font-size: 8pt; font-weight: bold; padding: 2px 10px; border-radius: 99px; }
+.elen-risk.write { color: #ffb547; border: 1px solid #ffb547; }
+.elen-risk.dangerous { color: #ff4a5a; border: 1px solid #ff4a5a; background-color: rgba(255, 70, 90, 0.18); }
+.elen-confirm-warning {
+  color: #ffd3d7; background-color: rgba(255, 70, 90, 0.18);
+  border-left: 3px solid #ff4a5a; padding: 8px 10px; border-radius: 4px;
+}
+.elen-confirm-recipients { spacing: 4px; }
+.elen-recipient-row { spacing: 8px; }
+.elen-recipient { font-family: monospace; color: #e9fdff; }
+.elen-recipient-status { font-family: monospace; font-size: 8pt; font-weight: bold; padding: 1px 8px; border-radius: 99px; }
+.elen-recipient-status.ok { color: #5dffa8; border: 1px solid #5dffa8; }
+.elen-recipient-status.info { color: #3ee8ff; border: 1px solid #3ee8ff; }
+.elen-recipient-status.bad { color: #ff4a5a; border: 1px solid #ff4a5a; }
+.elen-confirm-scroll { max-height: 420px; }
+.elen-confirm-fields { spacing: 4px; }
+.elen-field-label { font-family: monospace; font-size: 8.5pt; color: #3ee8ff; padding-top: 6px; }
+.elen-field-value { color: #d7f7ff; }
+.elen-field-entry {
+  background-color: rgba(62, 232, 255, 0.07);
+  border: 1px solid rgba(62, 232, 255, 0.45); border-radius: 8px;
+  color: #e9fdff; padding: 6px 10px;
+}
+.elen-field-entry.multiline { min-height: 140px; }
+.elen-field-entry.reason { margin-top: 8px; }
+.elen-approve { color: #3ee8ff; }
+.elen-approve-danger { color: #ff4a5a; font-weight: bold; }

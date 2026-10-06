@@ -1,0 +1,66 @@
+"""Command line entry point.
+
+  elen daemon     run the background service for the GNOME extension
+  elen chat       chat in the terminal
+  elen ask TEXT   ask one question
+  elen status     show models, plugins and tools
+  elen config     print the config file path
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+import os
+import sys
+
+
+def main() -> None:
+    argv = sys.argv[1:]
+    cmd = argv[0] if argv else "daemon"
+    logging.basicConfig(
+        level=os.environ.get("ELEN_LOG", "INFO"),
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+    if cmd == "daemon":
+        from .core import Elen
+        from .dbus_service import serve
+
+        async def run() -> None:
+            core = Elen()
+            await core.start()
+            try:
+                await serve(core)
+            finally:
+                await core.stop()
+
+        asyncio.run(run())
+    elif cmd == "chat":
+        from .cli import run_chat
+
+        run_chat()
+    elif cmd == "ask":
+        from .cli import run_ask
+
+        run_ask(argv[1:])
+    elif cmd == "status":
+        from .core import Elen
+
+        async def show() -> None:
+            core = Elen()
+            await core.start()
+            print(json.dumps(core.status(), indent=2))
+
+        asyncio.run(show())
+    elif cmd == "config":
+        from .config import ensure_user_config
+
+        print(ensure_user_config())
+    else:
+        print(__doc__)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,4 @@
+[D-BUS Service]
+Name=org.elen.Assistant
+Exec=@VENV@/bin/elen daemon
+SystemdService=elen.service

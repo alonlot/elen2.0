@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.elen" path="/org/gnome/shell/extensions/elen/">
+    <key name="toggle-chat" type="as">
+      <default><![CDATA[['<Super>j']]]></default>
+      <summary>Open or close the Elen chat</summary>
+    </key>
+    <key name="push-to-talk" type="as">
+      <default><![CDATA[['<Super><Shift>j']]]></default>
+      <summary>Start or stop voice input</summary>
+    </key>
+    <key name="show-reply-toast" type="b">
+      <default>true</default>
+      <summary>Show replies at the bottom of the screen when the chat is closed</summary>
+    </key>
+  </schema>
+</schemalist>

@@ -1,0 +1,142 @@
+# Elen 2.0 configuration: ~/.config/elen/config.toml
+# After you change this file: systemctl --user restart elen
+#
+# Secrets (API keys, passwords) can be written as:
+#   "env:VAR"        environment variable (put it in ~/.config/elen/env)
+#   "cmd:COMMAND"    output of a command, for example "cmd:secret-tool lookup elen mail"
+#   "file:PATH"      content of a file
+
+[user]
+name = ""            # how Elen addresses you
+language = "en"      # reply language
+timezone = ""        # informative only; Elen uses the system time zone
+
+# ---------------------------------------------------------------- models
+# provider = "anthropic"  -> Claude (official SDK)
+# provider = "openai"     -> any OpenAI-compatible API: OpenAI, Groq, OpenRouter,
+#                            LM Studio, vLLM, llama.cpp server...
+# provider = "ollama"     -> local Ollama (base_url defaults to http://localhost:11434/v1)
+
+[brain]
+provider = "anthropic"
+model = "claude-opus-5-5"
+api_key = "env:ANTHROPIC_API_KEY"
+base_url = ""
+effort = "medium"     # Claude only: low | medium | high | xhigh | max. "low" answers faster.
+max_tokens = 8000
+fallbacks = true      # Claude API only: server-side fallback when a request is declined
+max_steps = 12        # max tool rounds per request
+
+# Example: local brain with Ollama
+# provider = "ollama"
+# model = "qwen2.5:14b"
+
+[vision]              # used to look at screenshots
+provider = "anthropic"
+model = "claude-opus-5-5"
+api_key = "env:ANTHROPIC_API_KEY"
+effort = "low"
+max_tokens = 4000
+
+[stt]                 # speech to text
+provider = "openai"   # openai | faster_whisper | command | none
+model = "whisper-1"   # faster_whisper: "small", "medium", "large-v3"...
+api_key = "env:OPENAI_API_KEY"
+base_url = "https://api.openai.com/v1"   # Groq: https://api.groq.com/openai/v1 with model "whisper-large-v3"
+language = ""         # empty = auto detect, or "en", "he"...
+command = []          # provider "command": ["whisper-cli", "-m", "/path/model.bin", "-nt", "-f", "{wav}"]
+record_command = []   # empty = auto (arecord / parecord / pw-record)
+silence_seconds = 1.5 # stop recording after this much silence
+silence_threshold = 600
+max_seconds = 30
+auto_send = true      # send the transcript at once
+
+[tts]                 # optional spoken replies
+enabled = false
+command = ["spd-say", "-w", "{text}"]   # or piper: ["sh", "-c", "piper -m ~/voices/en.onnx --output-raw | aplay -r 22050 -f S16_LE -t raw -"]
+speak_on = "voice"    # voice = only answers to voice questions | always
+max_chars = 400
+
+[ui]
+auto_visualize = true # tools that return a visual show it on screen at once
+visual_seconds = 25   # 0 = stay until closed
+
+[history]
+max_context_messages = 40
+max_tool_result_chars = 12000
+
+[guard]
+confirm_timeout = 300     # seconds; no answer = rejected
+action_claim_check = true # flag replies that claim an action that did not happen
+verify_recipients = true  # check recipients against contacts / your words / read data
+# Change the risk level of a tool or of a whole plugin: read | low | write | dangerous
+# Lowering "write"/"dangerous" removes the approval step. Do this only if you accept the risk.
+[guard.overrides]
+# "screen" = "write"            # ask before every screenshot
+# "system__open_link" = "write"
+
+# ---------------------------------------------------------------- plugins
+[plugins]
+paths = []            # more folders with plugins
+
+[plugins.system]
+enabled = true
+command_timeout = 120
+
+[plugins.screen]
+enabled = true
+
+[plugins.memory]
+enabled = true
+
+[plugins.contacts]
+enabled = true
+# file = "~/.config/elen/contacts.toml"
+vcf_paths = []        # for example ["~/Documents/contacts.vcf"]
+
+[plugins.email]
+enabled = false
+
+[[plugins.email.accounts]]
+name = "work"
+address = "me@example.com"
+display_name = "My Name"
+imap_host = "mail.example.com"
+imap_port = 993
+smtp_host = "mail.example.com"
+smtp_port = 587       # 587 STARTTLS, 465 SSL
+username = "me@example.com"
+password = "cmd:secret-tool lookup elen mail-work"
+sent_folder = "Sent"
+drafts_folder = "Drafts"
+signature = ""
+
+[plugins.calendar]
+enabled = false
+
+[[plugins.calendar.sources]]
+name = "work"
+type = "caldav"       # Nextcloud, iCloud, Fastmail, Radicale, SOGo...
+url = "https://cloud.example.com/remote.php/dav"
+username = "me"
+password = "cmd:secret-tool lookup elen caldav"
+calendars = []        # empty = all
+default = true
+
+# [[plugins.calendar.sources]]
+# name = "google"
+# type = "ics"        # read only: Google Calendar > Settings > "Secret address in iCal format"
+# url = "https://calendar.google.com/calendar/ical/.../basic.ics"
+
+[plugins.claude_code]
+# Full control of the PC through `claude -p`. Each task still needs your approval.
+enabled = false
+binary = "claude"
+bypass_permissions = true   # adds --dangerously-skip-permissions
+workdir = "~"
+timeout = 900
+extra_args = []
+
+# Your own plugins: [plugins.<name>] with any settings they need.
+# [plugins.weather]
+# city = "Tel Aviv"
