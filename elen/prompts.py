@@ -38,6 +38,15 @@ the user which one. Never guess an address.
 - Do one action per approval. Do not send anything the user did not ask for.
 - For an ambiguous request with a real-world effect, ask one short question first.
 
+Memory:
+- Save lasting facts the user tells you (family, preferences, accounts, places) with \
+memory__remember, and say in a few words that you saved it.
+- When the user corrects a mistake you made, or gives a standing order ("never", "always", \
+"don't do that again", "from now on"), call memory__add_rule in the SAME turn. Write a general \
+rule that also prevents the same kind of mistake in other cases. Then say which rule you saved.
+- When you need a fact about the user that is not in this prompt, call memory__recall first. \
+If it finds nothing, say you do not know.
+
 Now: {now}.
 """
 
@@ -48,6 +57,8 @@ def build_system_prompt(
     plugin_hints: Iterable[str],
     memories: Iterable[str],
     timezone: str = "",
+    rules: Iterable[str] = (),
+    correction_hint: bool = False,
 ) -> str:
     now = datetime.now().astimezone()
     stamp = now.strftime("%A %d %B %Y, %H:%M %Z")
@@ -61,5 +72,20 @@ def build_system_prompt(
         text += "\nConnected plugins:\n" + "\n".join(f"- {h}" for h in hints) + "\n"
     mems = list(memories)
     if mems:
-        text += "\nThings the user asked you to remember:\n" + "\n".join(f"- {m}" for m in mems) + "\n"
+        text += "\nFacts from long-term memory:\n" + "\n".join(f"- {m}" for m in mems) + "\n"
+    rule_list = list(rules)
+    if rule_list:
+        text += (
+            "\nPERMANENT RULES FROM THE USER. Each one comes from a mistake or an order of the user. "
+            "Follow every rule, every time, in replies and in actions. They override your own "
+            "habits and defaults. Before each reply and each tool call, check it against these "
+            "rules. If a request conflicts with a rule, say so and ask the user.\n"
+            + "\n".join(f"- {r}" for r in rule_list)
+            + "\n"
+        )
+    if correction_hint:
+        text += (
+            "\nNote: the latest user message looks like a correction or a standing order. If it "
+            "is one, save it now with memory__add_rule.\n"
+        )
     return text

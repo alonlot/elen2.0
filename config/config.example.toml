@@ -69,6 +69,9 @@ max_tool_result_chars = 12000
 confirm_timeout = 300     # seconds; no answer = rejected
 action_claim_check = true # flag replies that claim an action that did not happen
 verify_recipients = true  # check recipients against contacts / your words / read data
+# Permanent rules (from "never do that again"): check them in code, not only in the prompt.
+rule_check = "actions"    # actions = every non-read tool | all = every tool | off
+rule_check_replies = true # check each final reply too; a reply that breaks a rule is rewritten once
 # Change the risk level of a tool or of a whole plugin: read | low | write | dangerous
 # Lowering "write"/"dangerous" removes the approval step. Do this only if you accept the risk.
 [guard.overrides]
@@ -88,6 +91,13 @@ enabled = true
 
 [plugins.memory]
 enabled = true
+max_facts_in_prompt = 60  # newest facts in every prompt; older ones via memory__recall. All rules always go in.
+
+# Model for the rule check. Default: the brain model at effort "low".
+# [checker]
+# model = "claude-haiku-4-5"   # faster and cheaper
+# effort = ""                  # Haiku 4.5 does not take the effort setting
+# fallbacks = false
 
 [plugins.contacts]
 enabled = true

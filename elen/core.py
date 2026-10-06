@@ -21,13 +21,14 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import shutil
 import time
 import uuid
 from pathlib import Path
 from typing import Any, Callable
 
-from .config import config_dir, data_dir, load_config
+from .config import config_dir, data_dir, deep_merge, load_config
 from .guard import Confirmation, Guard
 from .history import History
 from .llm import LLMError, ToolCall, make_provider
@@ -42,6 +43,40 @@ from .visuals import VISUAL_TOOL_SCHEMA, normalise
 log = logging.getLogger("elen.core")
 
 Listener_t = Callable[[str, dict], Any]
+
+CORRECTION_RE = re.compile(
+    r"(?:^|[.!?]\s*)never\b(?!\s*mind)"            # a sentence that starts with "never"
+    r"|\bnever\b.{0,80}\bagain\b"                   # "never ... again"
+    r"|\b(?:don'?t|do not) (?:ever|do (?:that|this|it) again)\b"
+    r"|\b(?:stop doing|from now on|next time,|in (?:the )?future,)"
+    r"|\byou (?:made a|did a) mistake\b|\bthat was wrong\b|\bwrong again\b"
+    r"|\balways (?:do|use|ask|check|remember|write|reply|answer)\b",
+    re.IGNORECASE,
+)
+
+CHECKER_SYSTEM = (
+    "You are a strict compliance checker for a personal assistant. You get the user's permanent "
+    "rules and one item the assistant plans to do or say. Decide if the item breaks any rule. "
+    "Flag only a clear conflict, not a weak association. Answer with JSON only, no other text: "
+    '{"violates": true or false, "rule_ids": ["id", ...], "explanation": "one sentence"}'
+)
+
+
+def parse_check(text: str) -> dict[str, Any] | None:
+    m = re.search(r"\{.*\}", text or "", re.S)
+    if not m:
+        return None
+    try:
+        data = json.loads(m.group(0))
+    except ValueError:
+        return None
+    if not isinstance(data, dict) or "violates" not in data:
+        return None
+    return {
+        "violates": bool(data.get("violates")),
+        "rule_ids": [str(r) for r in data.get("rule_ids") or []],
+        "explanation": str(data.get("explanation") or ""),
+    }
 
 
 class UIPlugin(Plugin):
@@ -97,6 +132,7 @@ class Elen:
         self.listener = Listener(cfg["stt"])
         self.speaker = Speaker(cfg["tts"])
         self._brain = None
+        self._checker = None
 
     @property
     def brain(self):
@@ -107,6 +143,19 @@ class Elen:
     @brain.setter
     def brain(self, provider) -> None:
         self._brain = provider
+
+    @property
+    def checker(self):
+        """Model for the rule check. [checker] in config, else the brain model at low effort."""
+        if self._checker is None:
+            own = self.config.get("checker") or {}
+            base = {**self.config["brain"], "effort": "low", "max_tokens": 2000}
+            self._checker = make_provider(deep_merge(base, own))
+        return self._checker
+
+    @checker.setter
+    def checker(self, provider) -> None:
+        self._checker = provider
 
     async def start(self) -> None:
         await self._load_plugins()
@@ -220,7 +269,11 @@ class Elen:
             self._spawn(self.speaker.say(reply))
         return reply
 
-    def _system_prompt(self) -> str:
+    def rules(self) -> list[str]:
+        memory = self.plugins.get("memory")
+        return memory.rule_lines() if memory is not None and hasattr(memory, "rule_lines") else []
+
+    def _system_prompt(self, text: str = "") -> str:
         hints, memories = [], []
         for plugin in self.plugins.values():
             try:
@@ -233,14 +286,20 @@ class Elen:
                 log.exception("prompt hint of %s failed", plugin.name)
         user = self.config["user"]
         return build_system_prompt(
-            user.get("name", ""), user.get("language", "en"), hints, memories, user.get("timezone", "")
+            user.get("name", ""),
+            user.get("language", "en"),
+            hints,
+            memories,
+            user.get("timezone", ""),
+            rules=self.rules(),
+            correction_hint=bool(CORRECTION_RE.search(text)) and "memory" in self.plugins,
         )
 
     async def run_turn(self, text: str) -> tuple[str, dict[str, Any]]:
         """Run the agent loop for one user message."""
         turn: list[dict[str, Any]] = [{"role": "user", "content": text}]
         executed: list[dict[str, Any]] = []
-        system = self._system_prompt()
+        system = self._system_prompt(text)
         tools = [t.schema() for t in self.tools.values()]
         max_steps = int(self.config["brain"].get("max_steps", 12))
         final = ""
@@ -254,6 +313,10 @@ class Elen:
             turn.append(msg)
             if not resp.tool_calls:
                 final = resp.text
+                revised = await self._enforce_rules_on_reply(system, tools, turn, text, final)
+                if revised is not None:
+                    turn[-1] = {"role": "assistant", "content": revised}
+                    final = revised
                 break
             if resp.text:
                 await self.add_activity("elen", resp.text)
@@ -270,6 +333,16 @@ class Elen:
         if warning:
             meta["warning"] = warning
             final = f"{final}\n\n⚠ {warning}"
+        if (
+            "memory" in self.plugins
+            and CORRECTION_RE.search(text)
+            and not any(a["tool"] == "memory__add_rule" and a["ok"] for a in executed)
+        ):
+            meta["rule_not_saved"] = True
+            final += (
+                "\n\nℹ No permanent rule was saved from this message. "
+                "Say \"make this a rule\" if Elen must remember it."
+            )
         self.history.add_turn(turn)
         return final or "(no reply)", meta
 
@@ -310,6 +383,19 @@ class Elen:
 
         risk = self.guard.effective_risk(spec)
         self.emit("tool", {"name": spec.full_name, "title": spec.title, "status": "running", "risk": risk})
+        conflict = await self.check_rules_for_action(spec, risk, args, turn)
+        if conflict and risk not in ("write", "dangerous"):
+            self.guard.audit("blocked_by_rule", tool=spec.full_name, args=args, **conflict)
+            self.emit("tool", {"name": spec.full_name, "title": spec.title, "status": "blocked"})
+            executed.append({"tool": spec.full_name, "risk": risk, "ok": False, "status": "blocked_by_rule"})
+            return reply(
+                {
+                    "status": "blocked_by_rule",
+                    "rule_ids": conflict["rule_ids"],
+                    "explanation": conflict["explanation"],
+                    "note": "Nothing was done. Follow the rule, or ask the user.",
+                }
+            )
         user_edited = False
         if risk in ("write", "dangerous"):
             user_texts = self.history.user_texts() + [
@@ -319,6 +405,9 @@ class Elen:
             report, warnings = self.guard.check_recipients(
                 spec, args, self.known_addresses(), user_texts, tool_texts
             )
+            if conflict:
+                ids = ", ".join(conflict["rule_ids"]) or "?"
+                warnings.insert(0, f"RULE CONFLICT (rule {ids}): {conflict['explanation']}")
             conf = Confirmation(
                 id=uuid.uuid4().hex[:12],
                 tool=spec.full_name,
@@ -379,6 +468,70 @@ class Elen:
             {"name": spec.full_name, "title": spec.title, "status": "done" if ok else "error", "summary": summary},
         )
         return reply(payload, not ok)
+
+    # ----- permanent rules -------------------------------------------
+    def _rule_check_mode(self) -> str:
+        return str(self.config["guard"].get("rule_check", "actions"))
+
+    async def _check(self, item: str) -> dict[str, Any] | None:
+        rules = self.rules()
+        if not rules:
+            return None
+        prompt = "Permanent rules:\n" + "\n".join(rules) + "\n\n" + item
+        try:
+            resp = await self.checker.chat(CHECKER_SYSTEM, [{"role": "user", "content": prompt}], None)
+        except Exception as e:  # noqa: BLE001
+            log.warning("rule check failed: %s", e)
+            return None
+        result = parse_check(resp.text)
+        return result if result and result["violates"] else None
+
+    async def check_rules_for_action(
+        self, spec: ToolSpec, risk: str, args: dict[str, Any], turn: list[dict[str, Any]]
+    ) -> dict[str, Any] | None:
+        mode = self._rule_check_mode()
+        if mode == "off" or spec.plugin in ("memory", "ui"):
+            return None
+        if mode != "all" and risk == "read":
+            return None
+        request = turn[0]["content"] if turn and isinstance(turn[0].get("content"), str) else ""
+        item = (
+            f"User request this turn: {request}\n\n"
+            f"Planned action: {spec.full_name} ({spec.title}), risk {risk}\n"
+            f"Arguments:\n{json.dumps(args, ensure_ascii=False, default=str)[:6000]}"
+        )
+        return await self._check(item)
+
+    async def _enforce_rules_on_reply(
+        self, system: str, tools: list, turn: list[dict[str, Any]], request: str, reply_text: str
+    ) -> str | None:
+        """Check the final reply. If it breaks a rule, ask the brain once for a new reply."""
+        if not reply_text or not self.config["guard"].get("rule_check_replies", True):
+            return None
+        if self._rule_check_mode() == "off":
+            return None
+        conflict = await self._check(
+            f"User request this turn: {request}\n\nPlanned reply to the user:\n{reply_text[:6000]}"
+        )
+        if not conflict:
+            return None
+        self.guard.audit("reply_rewritten_for_rule", **conflict)
+        await self.add_activity("guard", f"Reply broke rule {', '.join(conflict['rule_ids'])}; rewriting.")
+        note = {
+            "role": "user",
+            "content": (
+                f"[Elen guard] Your reply breaks permanent rule(s) {', '.join(conflict['rule_ids'])}: "
+                f"{conflict['explanation']} Write the reply to the user again so that it follows "
+                "every rule. Do not mention this note."
+            ),
+        }
+        try:
+            # Tools stay declared: the API needs them when the history has tool calls.
+            resp = await self.brain.chat(system, self.history.context() + turn + [note], tools)
+        except Exception as e:  # noqa: BLE001
+            log.warning("reply rewrite failed: %s", e)
+            return None
+        return resp.text or None
 
     # ----- approvals ---------------------------------------------------
     async def request_confirmation(self, conf: Confirmation) -> dict[str, Any]:

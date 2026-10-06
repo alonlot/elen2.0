@@ -18,6 +18,9 @@ A Jarvis-like personal assistant for Ubuntu 24.04 (GNOME 46, Wayland).
 - **Plugins** give Elen tools: mail (any IMAP/SMTP server), calendar (CalDAV / ICS), contacts,
   memory, desktop control, and full PC control through `claude -p`. Adding your own plugin is
   one Python file. See [docs/PLUGINS.md](docs/PLUGINS.md).
+- **Memory and permanent rules.** Elen saves facts about you and recalls them later. When you
+  correct a mistake ("never do that again"), Elen saves a permanent rule and checks every later
+  action and reply against it. See below.
 - **Guard rails** against hallucinations and against acting for you without your OK. See below.
 
 ## Architecture
@@ -100,6 +103,38 @@ does, not only what the prompt asks:
 You can change the level of any tool or plugin in `[guard.overrides]`. Lowering a `write` or
 `dangerous` tool removes its approval step. Do that only if you accept the risk.
 
+## Memory and permanent rules
+
+Elen has two kinds of long-term memory. **CLEAR** in the chat does not delete them.
+
+| Kind  | Example | How it is used |
+|-------|---------|----------------|
+| Fact  | "My wife's name is Dana." | The newest 60 facts are in every prompt. Older facts are found with `memory__recall`. |
+| Rule  | "Never send an email without my signature." | **All** rules are in every prompt and are checked in code. |
+
+How a mistake becomes a rule:
+
+1. You say, for example: *"You booked it for the wrong time zone. Never do that again."*
+2. Elen saves a general rule (`memory__add_rule`) and tells you the rule text. A line in the
+   chat shows "New permanent rule [id]: ...". If Elen does not save a rule after a message that
+   looks like a correction, the reply shows a note, so the miss is not silent.
+3. From then on, the rule is enforced in three places:
+   - **Prompt:** all rules are in a top-priority section of every request.
+   - **Actions:** before every action (not only approval actions), a checker model compares the
+     planned action with your rules. A small action that breaks a rule is **blocked**. A
+     write or dangerous action shows a red **RULE CONFLICT** line in the approval dialog.
+   - **Replies:** each final reply is checked too. A reply that breaks a rule is rewritten
+     once before you see it.
+4. Only you can remove a rule: deleting a rule always opens an approval dialog.
+
+Say "show my memory" to see all rules and facts on screen.
+
+What this can and cannot do: the code check makes repeat mistakes much less likely, and it
+always stops an action it detects as a conflict. It is still a model that judges the conflict,
+so it is not a mathematical guarantee. For a rule that must never be broken, also use a hard
+setting, for example `[guard.overrides]` or disabling the plugin. The checker can use a
+cheaper model: `[checker]` in the config. To turn the checks off: `[guard] rule_check = "off"`.
+
 ## Full PC control with Claude Code
 
 Enable `[plugins.claude_code]` and install the Claude Code CLI. Elen can then hand a task to
@@ -122,7 +157,7 @@ The HUD types are `calendar`, `list`, `stats`, `table`, `text`, `email`, `image`
 | `~/.config/elen/contacts.toml` | trusted contacts |
 | `~/.config/elen/plugins/` | your plugins |
 | `~/.local/share/elen/history.json` | chat history (deleted by CLEAR) |
-| `~/.local/share/elen/plugins/memory/memories.json` | long-term memory (not deleted by CLEAR) |
+| `~/.local/share/elen/plugins/memory/memories.json` | long-term facts and rules (not deleted by CLEAR) |
 | `~/.local/share/elen/audit.log` | action log |
 
 ## Development
