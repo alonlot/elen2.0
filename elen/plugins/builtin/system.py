@@ -158,6 +158,7 @@ class SystemPlugin(Plugin):
         risk="dangerous",
         editable=["command"],
         title="Run shell command",
+        untrusted=True,
     )
     async def run_command(self, command: str, reason: str = ""):
         timeout = float(self.config.get("command_timeout", 120))

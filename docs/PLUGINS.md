@@ -41,6 +41,7 @@ class HelloPlugin(Plugin):
     editable=[...],                  # arguments the user can edit in the approval dialog
     recipients=[...],                # arguments that hold other people's addresses / numbers
     title="Send message",            # name in the approval dialog
+    untrusted=False,                 # True if the result holds text written by other people
 )
 ```
 
@@ -65,6 +66,14 @@ params={
 | `dangerous` | can change the computer                        | approval dialog, red, 3 s arming delay |
 
 Choose the higher level when you are not sure.
+
+**Untrusted content.** Set `untrusted=True` when the result holds text that other people
+wrote: mail, chat messages, web pages, documents, issue comments, the screen. Such text can
+hide instructions for the model ("prompt injection"). Elen then marks the result as data, and
+from that point every action in the conversation needs approval, also `low` ones.
+
+A tool that sends data to an address the model chooses (for example an HTTP GET to any URL)
+can leak data, even if it only reads. Give it at least `risk="low"`, never `read`.
 
 **Recipients.** If the tool sends something to a person (mail, chat message, SMS, a call),
 list the argument in `recipients=[...]`. The guard then labels each address or number in

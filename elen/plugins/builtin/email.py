@@ -230,6 +230,7 @@ class EmailPlugin(Plugin):
             "unread_only": "boolean: only unread mail",
             "limit": "integer: how many, default 10",
         },
+        untrusted=True,
     )
     async def list_emails(self, account: str = "", folder: str = "INBOX", unread_only: bool = False, limit: int = 10):
         acc = self.account(account)
@@ -259,6 +260,7 @@ class EmailPlugin(Plugin):
             "limit": "integer: default 10",
         },
         required=["query"],
+        untrusted=True,
     )
     async def search_emails(self, query: str, field: str = "any", since: str = "", account: str = "", folder: str = "INBOX", limit: int = 10):
         acc = self.account(account)
@@ -288,6 +290,7 @@ class EmailPlugin(Plugin):
         "Read one email in full (by uid from list or search) and show it on screen.",
         params={"uid": "string: email uid", "account": "string", "folder": "string: default INBOX"},
         required=["uid"],
+        untrusted=True,
     )
     async def read_email(self, uid: str, account: str = "", folder: str = "INBOX"):
         acc = self.account(account)

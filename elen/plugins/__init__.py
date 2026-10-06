@@ -63,6 +63,7 @@ class ToolSpec:
     recipients: tuple[str, ...]
     func: Callable[..., Awaitable[Any]]
     title: str = ""
+    untrusted: bool = False
 
     @property
     def full_name(self) -> str:
@@ -100,6 +101,7 @@ def tool(
     recipients: tuple[str, ...] | list[str] = (),
     name: str | None = None,
     title: str = "",
+    untrusted: bool = False,
 ):
     """Mark a plugin method as a tool the assistant can call.
 
@@ -109,6 +111,9 @@ def tool(
     editable    args the user can edit in the approval dialog (write/dangerous)
     recipients  args that hold email addresses or phone numbers of other
                 people. The guard checks them against contacts and the chat.
+    untrusted   True if the result holds text written by other people (mail,
+                web pages, files, screen). It can contain hidden instructions
+                (prompt injection), so after it every action needs approval.
     """
     if risk not in RISK_LEVELS:
         raise ValueError(f"risk must be one of {RISK_LEVELS}")
@@ -123,6 +128,7 @@ def tool(
             "recipients": tuple(recipients),
             "name": name or func.__name__,
             "title": title,
+            "untrusted": untrusted,
         }
         return func
 
@@ -220,6 +226,7 @@ class Plugin:
                     recipients=meta["recipients"],
                     func=bound,
                     title=meta["title"] or meta["name"].replace("_", " ").capitalize(),
+                    untrusted=meta["untrusted"],
                 )
             )
         return specs

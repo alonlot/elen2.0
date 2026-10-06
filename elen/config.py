@@ -79,6 +79,7 @@ DEFAULTS: dict[str, Any] = {
         "confirm_timeout": 300,
         "action_claim_check": True,
         "verify_recipients": True,
+        "untrusted_content": "confirm",
         "rule_check": "actions",
         "rule_check_replies": True,
         "overrides": {},

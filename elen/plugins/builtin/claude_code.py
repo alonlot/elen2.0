@@ -88,6 +88,7 @@ class ClaudeCodePlugin(Plugin):
         risk="dangerous",
         editable=["task", "workdir"],
         title="Claude Code task (full control)",
+        untrusted=True,
     )
     async def run_task(self, task: str, workdir: str = "", continue_previous: bool = False):
         cwd = Path(os.path.expanduser(workdir or self.config.get("workdir", "~")))

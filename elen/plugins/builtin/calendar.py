@@ -160,6 +160,7 @@ class CalendarPlugin(Plugin):
             "start_date": "string: 'today', 'tomorrow' or YYYY-MM-DD",
             "days": "integer: number of days, default 1",
         },
+        untrusted=True,
     )
     async def get_events(self, start_date: str = "today", days: int = 1):
         day = parse_day(start_date)

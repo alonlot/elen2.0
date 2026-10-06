@@ -19,6 +19,7 @@ class ScreenPlugin(Plugin):
         "Take a screenshot of the whole screen and ask the vision model a question about it. "
         "Returns the vision model's answer.",
         params={"question": "string: what you want to know about the screen"},
+        untrusted=True,
     )
     async def look_at_screen(self, question: str = "Describe what is on the screen."):
         path = await self.ctx.screenshot()

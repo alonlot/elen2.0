@@ -139,7 +139,12 @@ does, not only what the prompt asks:
 7. **Truth rules** in the system prompt: facts about your mail, calendar, files and screen
    only from tool results; no invented names, addresses, numbers; say "I do not know".
    The vision model is told to quote exactly and to say when text is unreadable.
-8. **Audit log** of every action, approval and rejection: `~/.local/share/elen/audit.log`.
+8. **Prompt-injection guard.** Mail, calendar events, the screen, files and command output
+   can contain hidden instructions written by someone else. Elen marks this content as
+   untrusted data, and the brain is told never to follow instructions inside it. In code:
+   after outside content enters the conversation, **every** action needs your approval, also
+   small ones such as opening a link, and the dialog says why.
+9. **Audit log** of every action, approval and rejection: `~/.local/share/elen/audit.log`.
 
 You can change the level of any tool or plugin in `[guard.overrides]`. Lowering a `write` or
 `dangerous` tool removes its approval step. Do that only if you accept the risk.
