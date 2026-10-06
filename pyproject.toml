@@ -19,8 +19,9 @@ dependencies = [
 [project.optional-dependencies]
 calendar = ["caldav>=1.3", "icalendar>=5.0", "recurring-ical-events>=2.0"]
 local-stt = ["faster-whisper>=1.0"]
+wake = ["vosk>=0.3.45"]
 dev = ["pytest>=8", "pytest-asyncio>=0.23"]
-all = ["caldav>=1.3", "icalendar>=5.0", "recurring-ical-events>=2.0", "faster-whisper>=1.0"]
+all = ["caldav>=1.3", "icalendar>=5.0", "recurring-ical-events>=2.0", "faster-whisper>=1.0", "vosk>=0.3.45"]
 
 [project.scripts]
 elen = "elen.__main__:main"

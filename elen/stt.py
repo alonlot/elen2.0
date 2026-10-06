@@ -35,6 +35,20 @@ CANDIDATES = [
 ]
 
 
+def write_wav(path: Path, pcm: bytes) -> Path:
+    """Save raw 16 kHz mono S16LE audio as a WAV file."""
+    with wave.open(str(path), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(RATE)
+        w.writeframes(pcm)
+    return path
+
+
+def has_speech(pcm: bytes, threshold: float) -> bool:
+    return any(rms(pcm[i : i + 3200]) > threshold for i in range(0, len(pcm), 3200))
+
+
 def rms(chunk: bytes) -> float:
     samples = array.array("h")
     samples.frombytes(chunk[: len(chunk) - len(chunk) % 2])
@@ -100,11 +114,7 @@ class Recorder:
                     await asyncio.wait_for(proc.wait(), 2)
                 except asyncio.TimeoutError:
                     proc.kill()
-        with wave.open(str(out), "wb") as w:
-            w.setnchannels(1)
-            w.setsampwidth(2)
-            w.setframerate(RATE)
-            w.writeframes(bytes(frames))
+        write_wav(out, bytes(frames))
         if not heard_speech:
             raise RuntimeError("No speech heard.")
         return out

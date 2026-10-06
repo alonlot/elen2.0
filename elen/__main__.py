@@ -5,6 +5,7 @@
   elen ask TEXT   ask one question
   elen status     show models, plugins and tools
   elen config     print the config file path
+  elen download-wake-model   get the offline model for the "Hey Ellen" wake word
   elen set KEY VALUE   change a setting, for example:
                   elen set brain.base_url http://localhost:11434/v1
                   elen set brain.model qwen2.5:14b
@@ -62,6 +63,12 @@ def main() -> None:
 
         path = set_dotted(argv[1], argv[2])
         print(f"Saved to {path}. Restart Elen: systemctl --user restart elen")
+    elif cmd == "download-wake-model":
+        from .config import data_dir
+        from .wake import download_vosk_model
+
+        download_vosk_model(data_dir())
+        print("Turn it on: elen set wake.enabled true   then: systemctl --user restart elen")
     elif cmd == "config":
         from .config import ensure_user_config
 

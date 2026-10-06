@@ -25,7 +25,7 @@ say "Creating Python environment in $VENV"
 mkdir -p "$PREFIX"
 python3 -m venv "$VENV"
 "$VENV/bin/pip" install -q --upgrade pip
-"$VENV/bin/pip" install -q "$REPO[calendar]"
+"$VENV/bin/pip" install -q "$REPO[calendar,wake]"
 
 say "Config in $CONF"
 mkdir -p "$CONF/plugins"
@@ -71,7 +71,10 @@ Next steps:
  4. Log out and log in again (GNOME on Wayland loads new extensions only at login).
     Then run: gnome-extensions enable $UUID
 
-Shortcuts: Super+J opens the chat, Super+Shift+J starts or stops voice input.
+Shortcuts: Super+J opens the chat, Super+Shift+J starts or stops voice input,
+           Super+Shift+Backspace stops Elen.
+Wake word: $VENV/bin/elen download-wake-model, then elen set wake.enabled true
+           and restart. Then say "Hey Ellen".
 Logs:      journalctl --user -u elen -f
 Test:      $VENV/bin/elen chat
 MSG

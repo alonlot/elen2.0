@@ -71,6 +71,14 @@ class ElenIndicator extends PanelMenu.Button {
         header.add_child(new St.Label({text: 'E L E N   2 . 0', style_class: 'elen-chat-title', x_expand: true}));
         this._status = new St.Label({text: STATE_TEXT.offline, style_class: 'elen-chat-status', y_align: Clutter.ActorAlign.CENTER});
         header.add_child(this._status);
+        this._ear = new St.Button({
+            style_class: 'elen-icon-button small',
+            can_focus: true,
+            child: new St.Icon({icon_name: 'audio-input-microphone-symbolic', icon_size: 14}),
+        });
+        this._ear.connect('clicked', () => this.toggleWake());
+        header.add_child(this._ear);
+        this.setWakeState({enabled: false});
         const gear = new St.Button({
             style_class: 'elen-icon-button small',
             can_focus: true,
@@ -182,6 +190,26 @@ class ElenIndicator extends PanelMenu.Button {
 
     stop() {
         this._client.call('Stop').catch(() => {});
+    }
+
+    toggleWake() {
+        this._client.call('ToggleWake').then(json => {
+            const state = JSON.parse(json);
+            this.setWakeState(state);
+            if (state.error)
+                this._addLabel(state.error, 'elen-msg activity', '· ');
+        }).catch(() => {});
+    }
+
+    // The ear button shows whether "Hey Ellen" is listening.
+    setWakeState(state) {
+        if (state.enabled) {
+            this._ear.add_style_class_name('wake-on');
+            this._ear.accessible_name = 'Wake word is on. Click to turn it off.';
+        } else {
+            this._ear.remove_style_class_name('wake-on');
+            this._ear.accessible_name = 'Wake word is off. Click to turn it on.';
+        }
     }
 
     addMessage(m, scroll = true) {

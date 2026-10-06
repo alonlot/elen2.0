@@ -120,6 +120,30 @@ Tool use is the hard part for a model: small local models (below about 14B param
 pick wrong tools or invent arguments. The guard still stops every action for your approval,
 but a stronger model makes far fewer mistakes.
 
+## Wake word: "Hey Ellen"
+
+```bash
+~/.local/share/elen/venv/bin/elen download-wake-model      # offline model, 40 MB
+~/.local/share/elen/venv/bin/elen set wake.enabled true
+systemctl --user restart elen
+```
+
+Then say **"Hey Ellen"**, hear the chime, and say your request. You can also say it in one
+breath: "Hey Ellen, open my calendar". Elen keeps the words after the wake phrase. Saying the
+wake word while Elen speaks stops her speech.
+
+- The default engine (Vosk) runs on your computer. Audio leaves the computer only after the
+  wake phrase, for speech to text.
+- The phrase is written "ellen" because the model knows that word; it sounds the same.
+  Change `[wake] phrases` to any words the model knows.
+- The ear button in the chat header turns the wake word off and on (green = listening).
+- Tested here with synthetic speech: it wakes on "Hey / Okay Ellen" and stays quiet for
+  "Hey Jarvis" and for sentences with Helen or Allen. Real rooms, accents and microphones
+  differ: raise `threshold` if it wakes up by mistake, lower it if it does not hear you.
+- `engine = "openwakeword"` uses neural wake-word models (for example `hey_jarvis` or one you
+  train). Its current release does not install on Python 3.12, which Ubuntu 24.04 uses, so
+  Vosk is the default.
+
 ## Guard rails
 
 Elen must not invent facts and must not act for you without your OK. This is what the code

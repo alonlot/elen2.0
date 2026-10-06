@@ -67,6 +67,15 @@ DEFAULTS: dict[str, Any] = {
         "max_seconds": 30,
         "auto_send": True,
     },
+    "wake": {
+        "enabled": False,
+        "engine": "vosk",
+        "phrases": ["hey ellen", "hi ellen", "okay ellen"],
+        "model": "",
+        "threshold": 0.5,
+        "fast": False,
+        "chime": True,
+    },
     "tts": {
         "enabled": False,
         "command": ["spd-say", "-w", "{text}"],

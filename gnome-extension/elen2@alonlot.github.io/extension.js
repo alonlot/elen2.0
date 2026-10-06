@@ -57,8 +57,9 @@ export default class ElenExtension extends Extension {
             this._indicator.setState('offline');
             return;
         }
-        this._client.call('RegisterUI').then(() => {
+        this._client.call('RegisterUI').then(json => {
             this._indicator?.setState('idle');
+            this._indicator?.setWakeState(JSON.parse(json ?? '{}').wake ?? {enabled: false});
             return this._client.call('PendingConfirmations');
         }).then(json => {
             for (const conf of JSON.parse(json ?? '[]'))
@@ -103,6 +104,13 @@ export default class ElenExtension extends Extension {
             break;
         case 'screenshot_request':
             this._takeScreenshot(data);
+            break;
+        case 'wake':
+            if (!this._indicator.menu.isOpen)
+                this._hud.toast('Listening…');
+            break;
+        case 'wake_state':
+            this._indicator.setWakeState(data);
             break;
         case 'transcript':
             this._indicator.showTranscript(data.text);

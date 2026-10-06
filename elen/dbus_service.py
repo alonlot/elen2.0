@@ -62,6 +62,11 @@ class ElenInterface(ServiceInterface):
         return self.core.toggle_listening()
 
     @method()
+    def ToggleWake(self) -> "s":
+        """Turn the wake word on or off."""
+        return json.dumps(self.core.toggle_wake())
+
+    @method()
     def RegisterUI(self) -> "s":
         self.core.ui_present = True
         return json.dumps(self.core.status())

@@ -40,7 +40,7 @@ from .llm import LLMError, ToolCall, make_provider
 from .plugins import Plugin, PluginContext, ToolResult, ToolSpec, tool
 from .plugins.loader import BUILTIN, discover
 from .prompts import build_system_prompt
-from .stt import Listener
+from .stt import Listener, has_speech, write_wav
 from .tts import Speaker
 from .vision import Vision
 from .visuals import VISUAL_TOOL_SCHEMA, normalise
@@ -136,6 +136,8 @@ class Elen:
         self._current: asyncio.Task | None = None
         self._speak = False
         self._spoke_streaming = False
+        self.wake = None
+        self.wake_error = ""
         self._configure()
 
     # ----- setup -------------------------------------------------------
@@ -186,8 +188,64 @@ class Elen:
 
     async def start(self) -> None:
         await self._load_plugins()
+        if self.config["wake"].get("enabled"):
+            self._start_wake()
+
+    def _start_wake(self) -> bool:
+        from .wake import WakeListener, make_engine
+
+        try:
+            engine = make_engine(self.config["wake"], self.data_dir)
+            command = self.listener.recorder.command()
+        except Exception as e:  # noqa: BLE001
+            self.wake_error = f"Wake word is off: {e}"
+            log.error(self.wake_error)
+            return False
+        self.wake_error = ""
+        self.wake = WakeListener(engine, command, self._on_wake)
+        self.wake.start()
+        log.info("wake word on (%s)", self.config["wake"].get("engine", "vosk"))
+        return True
+
+    def toggle_wake(self) -> dict[str, Any]:
+        """Turn the wake word on or off (for this session)."""
+        if self.wake is None:
+            self._start_wake()
+        elif self.wake.enabled:
+            self.wake.set_enabled(False)
+        else:
+            self.wake.set_enabled(True)
+        state = {"enabled": bool(self.wake and self.wake.enabled), "error": self.wake_error}
+        self.emit("wake_state", state)
+        return state
+
+    async def _on_wake(self, tail: bytes = b"") -> None:
+        self.emit("wake", {})
+        await self.speaker.stop()  # talking over Elen stops her speech
+        if self.config["wake"].get("chime", True):
+            self._spawn(self._chime())
+        threshold = float(self.config["stt"].get("silence_threshold", 600))
+        if len(tail) > 16000 and has_speech(tail, threshold):
+            await self._listen_flow(audio=tail)  # the request came in the same breath
+        else:
+            await self._listen_flow()
+
+    async def _chime(self) -> None:
+        for cmd in (
+            ["canberra-gtk-play", "-i", "message-new-instant"],
+            ["paplay", "/usr/share/sounds/freedesktop/stereo/message-new-instant.oga"],
+        ):
+            if shutil.which(cmd[0]):
+                proc = await asyncio.create_subprocess_exec(
+                    *cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL
+                )
+                await proc.wait()
+                return
 
     async def stop(self) -> None:
+        if self.wake is not None:
+            await self.wake.stop()
+            self.wake = None
         for plugin in self.plugins.values():
             try:
                 await plugin.teardown()
@@ -236,6 +294,7 @@ class Elen:
             "stt": f"{self.config['stt']['provider']}:{self.config['stt'].get('model', '')}",
             "plugins": sorted(self.plugins),
             "plugin_errors": self.plugin_errors,
+            "wake": {"enabled": bool(self.wake and self.wake.enabled), "error": self.wake_error},
             "tools": sorted(self.tools),
         }
 
@@ -720,22 +779,31 @@ class Elen:
         self._spawn(self._listen_flow())
         return "listening"
 
-    async def _listen_flow(self) -> None:
+    async def _listen_flow(self, audio: bytes | None = None) -> None:
+        """Record (or use audio already heard), transcribe, then send the request."""
         await self.speaker.stop()
+        if self.wake is not None:
+            self.wake.suspend()  # free the microphone
         self.set_state("listening")
         try:
             with tempfile.TemporaryDirectory(prefix="elen-") as tmp:
-                wav = await self.listener.recorder.record(Path(tmp) / "speech.wav")
+                if audio:
+                    wav = write_wav(Path(tmp) / "speech.wav", audio)
+                else:
+                    wav = await self.listener.recorder.record(Path(tmp) / "speech.wav")
                 self.set_state("transcribing")
                 text = await self.listener.transcriber.transcribe(wav)
         except Exception as e:  # noqa: BLE001
             self.emit("error", {"text": f"Voice input failed: {e}"})
             self.set_state("idle")
             return
+        finally:
+            if self.wake is not None and self.wake.enabled:
+                self.wake.resume()
         self.set_state("idle")
         self.emit("transcript", {"text": text})
         if text and self.config["stt"].get("auto_send", True):
-            await self.ask(text, source="voice")
+            self.submit(text, source="voice")  # do not wait: the wake word works during the reply
 
     # ----- history -----------------------------------------------------
     def clear_history(self) -> None:
