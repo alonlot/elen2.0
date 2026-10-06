@@ -58,7 +58,250 @@ function eventPhase(ev) {
     return 'future';
 }
 
+function flow(styleClass = '') {
+    return new St.Widget({
+        style_class: styleClass,
+        x_expand: true,
+        layout_manager: new Clutter.FlowLayout({column_spacing: 6, row_spacing: 6, homogeneous: false}),
+    });
+}
+
+function humanize(key) {
+    return String(key)
+        .replace(/[_-]+/g, ' ')
+        .replace(/([a-z])([A-Z])/g, '$1 $2')
+        .trim()
+        .toUpperCase();
+}
+
+function formatScalar(v) {
+    if (v === null || v === undefined || v === '')
+        return '—';
+    if (typeof v === 'boolean')
+        return v ? 'Yes' : 'No';
+    if (typeof v === 'number')
+        return Number.isInteger(v) ? v.toLocaleString() : v.toLocaleString(undefined, {maximumFractionDigits: 2});
+    return String(v);
+}
+
+const isScalar = v => v === null || typeof v !== 'object';
+const SERIES_COLORS = [[0.24, 0.91, 1.0], [1.0, 0.71, 0.28], [0.36, 1.0, 0.66], [0.85, 0.55, 1.0]];
+
+// Lay out any JSON value: objects as label/value fields, arrays of objects as
+// tables, arrays of scalars as tags. No definition needed.
+function renderData(value, depth = 0) {
+    if (isScalar(value))
+        return wrapLabel(formatScalar(value), 'elen-data-value');
+    if (Array.isArray(value)) {
+        if (!value.length)
+            return new St.Label({text: '—', style_class: 'elen-data-value'});
+        if (value.every(isScalar)) {
+            const tags = flow('elen-data-tags');
+            for (const v of value)
+                tags.add_child(new St.Label({text: formatScalar(v), style_class: 'elen-chip'}));
+            return tags;
+        }
+        if (value.every(v => v && typeof v === 'object' && !Array.isArray(v))) {
+            const cols = [];
+            for (const row of value) {
+                for (const k of Object.keys(row)) {
+                    if (!cols.includes(k) && cols.length < 6)
+                        cols.push(k);
+                }
+            }
+            return RENDERERS.table({
+                columns: cols.map(humanize),
+                rows: value.map(row => cols.map(k => (isScalar(row[k]) ? formatScalar(row[k])
+                    : Array.isArray(row[k]) ? row[k].map(formatScalar).join(', ') : '{…}'))),
+            });
+        }
+        const box = vbox('elen-data-list');
+        value.forEach(v => box.add_child(renderData(v, depth + 1)));
+        return box;
+    }
+    const box = vbox(depth ? 'elen-data-nested' : 'elen-data');
+    for (const [key, v] of Object.entries(value)) {
+        if (isScalar(v) || (Array.isArray(v) && v.every(isScalar))) {
+            const row = hbox('elen-data-row');
+            row.add_child(new St.Label({text: humanize(key), style_class: 'elen-data-key'}));
+            row.add_child(renderData(v, depth + 1));
+            box.add_child(row);
+        } else {
+            box.add_child(new St.Label({text: humanize(key), style_class: 'elen-data-section'}));
+            box.add_child(renderData(v, depth + 1));
+        }
+    }
+    return box;
+}
+
+function barChart(spec) {
+    const box = vbox('elen-chart');
+    const labels = spec.labels ?? [];
+    const series = (spec.series ?? []).filter(s => s.values?.length);
+    const max = Math.max(1e-9, ...series.flatMap(s => s.values.filter(v => v !== null).map(Math.abs)));
+    const width = 460;
+    labels.forEach((label, i) => {
+        const row = hbox('elen-chart-row');
+        row.add_child(new St.Label({text: label, style_class: 'elen-chart-label', y_align: Clutter.ActorAlign.CENTER}));
+        const bars = vbox('elen-chart-bars');
+        series.forEach((ser, si) => {
+            const v = ser.values[i];
+            const line = hbox();
+            const [r, g, b] = SERIES_COLORS[si % SERIES_COLORS.length];
+            const w = v === null || v === undefined ? 0 : Math.max(2, Math.round(width * Math.abs(v) / max));
+            line.add_child(new St.Widget({
+                style_class: 'elen-chart-bar',
+                style: `width: ${w}px; background-color: rgba(${Math.round(r * 255)},${Math.round(g * 255)},${Math.round(b * 255)},0.85);`,
+                y_align: Clutter.ActorAlign.CENTER,
+            }));
+            line.add_child(new St.Label({text: `${formatScalar(v)}${spec.unit ? ` ${spec.unit}` : ''}`, style_class: 'elen-chart-value'}));
+            bars.add_child(line);
+        });
+        row.add_child(bars);
+        box.add_child(row);
+    });
+    return box;
+}
+
+function lineChart(spec) {
+    const box = vbox('elen-chart');
+    const labels = spec.labels ?? [];
+    const series = (spec.series ?? []).filter(s => s.values?.length);
+    const all = series.flatMap(s => s.values.filter(v => v !== null && v !== undefined));
+    if (!all.length) {
+        box.add_child(new St.Label({text: 'NO DATA', style_class: 'elen-empty'}));
+        return box;
+    }
+    const min = Math.min(...all), max = Math.max(...all);
+    const span = max - min || 1;
+    const area = new St.DrawingArea({height: 220, x_expand: true, style_class: 'elen-chart-area'});
+    area.connect('repaint', a => {
+        const cr = a.get_context();
+        const [w, h] = a.get_surface_size();
+        const pad = 8;
+        cr.setLineWidth(1);
+        cr.setSourceRGBA(0.24, 0.91, 1.0, 0.12);
+        for (let i = 0; i <= 4; i++) {
+            const y = pad + ((h - 2 * pad) * i) / 4;
+            cr.moveTo(0, y);
+            cr.lineTo(w, y);
+        }
+        cr.stroke();
+        series.forEach((ser, si) => {
+            const [r, g, b] = SERIES_COLORS[si % SERIES_COLORS.length];
+            cr.setSourceRGBA(r, g, b, 0.95);
+            cr.setLineWidth(2.5);
+            let started = false;
+            ser.values.forEach((v, i) => {
+                if (v === null || v === undefined)
+                    return;
+                const x = pad + ((w - 2 * pad) * i) / Math.max(1, ser.values.length - 1);
+                const y = pad + (h - 2 * pad) * (1 - (v - min) / span);
+                if (started)
+                    cr.lineTo(x, y);
+                else
+                    cr.moveTo(x, y);
+                started = true;
+            });
+            cr.stroke();
+        });
+        cr.$dispose();
+    });
+    const scale = hbox('elen-chart-scale');
+    scale.add_child(new St.Label({text: `max ${formatScalar(max)}${spec.unit ? ` ${spec.unit}` : ''}`, style_class: 'elen-meta', x_expand: true}));
+    scale.add_child(new St.Label({text: `min ${formatScalar(min)}${spec.unit ? ` ${spec.unit}` : ''}`, style_class: 'elen-meta'}));
+    box.add_child(scale);
+    box.add_child(area);
+    if (labels.length) {
+        const axis = hbox('elen-chart-axis');
+        axis.add_child(new St.Label({text: labels[0], style_class: 'elen-meta', x_expand: true}));
+        if (labels.length > 2)
+            axis.add_child(new St.Label({text: labels[Math.floor(labels.length / 2)], style_class: 'elen-meta', x_expand: true, x_align: Clutter.ActorAlign.CENTER}));
+        axis.add_child(new St.Label({text: labels[labels.length - 1], style_class: 'elen-meta'}));
+        box.add_child(axis);
+    }
+    return box;
+}
+
+function legend(spec) {
+    const series = spec.series ?? [];
+    if (series.length < 2)
+        return null;
+    const row = flow('elen-chart-legend');
+    series.forEach((ser, si) => {
+        const [r, g, b] = SERIES_COLORS[si % SERIES_COLORS.length];
+        row.add_child(new St.Label({
+            text: `■ ${ser.name}`,
+            style: `color: rgb(${Math.round(r * 255)},${Math.round(g * 255)},${Math.round(b * 255)});`,
+            style_class: 'elen-meta',
+        }));
+    });
+    return row;
+}
+
 const RENDERERS = {
+    data(spec) {
+        return renderData(spec.data);
+    },
+
+    card(spec) {
+        const box = vbox('elen-card');
+        const top = hbox('elen-card-top');
+        if (spec.image) {
+            top.add_child(new St.Bin({
+                style_class: 'elen-card-image',
+                style: `background-image: url("${GLib.filename_to_uri(spec.image, null)}"); background-size: cover;`,
+            }));
+        }
+        const fields = vbox('elen-data');
+        for (const f of spec.fields ?? []) {
+            const row = hbox('elen-data-row');
+            row.add_child(new St.Label({text: String(f.label ?? '').toUpperCase(), style_class: 'elen-data-key'}));
+            row.add_child(wrapLabel(formatScalar(f.value), 'elen-data-value'));
+            fields.add_child(row);
+        }
+        top.add_child(fields);
+        box.add_child(top);
+        if (spec.tags?.length) {
+            const tags = flow('elen-data-tags');
+            for (const t of spec.tags)
+                tags.add_child(new St.Label({text: t, style_class: 'elen-chip'}));
+            box.add_child(tags);
+        }
+        if (spec.body)
+            box.add_child(wrapLabel(spec.body, 'elen-text-body'));
+        return box;
+    },
+
+    chart(spec) {
+        const box = vbox('elen-chart-wrap');
+        const l = legend(spec);
+        if (l)
+            box.add_child(l);
+        box.add_child(spec.kind === 'line' ? lineChart(spec) : barChart(spec));
+        return box;
+    },
+
+    timeline(spec) {
+        const box = vbox('elen-timeline');
+        for (const item of spec.items ?? []) {
+            const row = hbox('elen-tl-row');
+            row.add_child(new St.Label({text: item.time ?? '', style_class: 'elen-tl-time'}));
+            row.add_child(new St.Widget({style_class: 'elen-tl-line', y_expand: true}));
+            const text = vbox('elen-tl-text');
+            const head = hbox();
+            head.add_child(wrapLabel(item.title ?? '', 'elen-cal-title'));
+            if (item.badge)
+                head.add_child(new St.Label({text: item.badge, style_class: 'elen-badge', y_align: Clutter.ActorAlign.START}));
+            text.add_child(head);
+            if (item.detail)
+                text.add_child(wrapLabel(item.detail, 'elen-cal-loc'));
+            row.add_child(text);
+            box.add_child(row);
+        }
+        return box;
+    },
+
     calendar(spec) {
         const box = vbox('elen-cal');
         const events = spec.events ?? [];
@@ -221,7 +464,7 @@ const RENDERERS = {
 };
 
 function renderBody(spec) {
-    const render = RENDERERS[spec.type] ?? RENDERERS.text;
+    const render = RENDERERS[spec.type] ?? RENDERERS.data;
     try {
         return render(spec);
     } catch (e) {

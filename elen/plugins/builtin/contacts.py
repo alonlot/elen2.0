@@ -68,6 +68,7 @@ class ContactsPlugin(Plugin):
                             "phones": list(c.get("phones", [])),
                             "aliases": list(c.get("aliases", [])),
                             "notes": c.get("notes", ""),
+                            "photo": str(Path(c["photo"]).expanduser()) if c.get("photo") else "",
                         }
                     )
         for p in self.config.get("vcf_paths", []):
@@ -102,9 +103,24 @@ class ContactsPlugin(Plugin):
         result = {"query": query, "matches": hits, "count": len(hits)}
         if not hits:
             result["note"] = "No contact found. Ask the user for the exact address."
-        elif len(hits) > 1:
+            return result
+        if len(hits) > 1:
             result["note"] = "More than one match. Ask the user which one."
-        return result
+            visual = {
+                "type": "list",
+                "title": f"{len(hits)} contacts match '{query}'",
+                "items": [{"title": c["name"], "subtitle": ", ".join(c["emails"] + c["phones"]), "meta": c["notes"]} for c in hits],
+            }
+        else:
+            c = hits[0]
+            fields = [{"label": "Email", "value": e} for e in c["emails"]]
+            fields += [{"label": "Phone", "value": p} for p in c["phones"]]
+            if c["notes"]:
+                fields.append({"label": "Notes", "value": c["notes"]})
+            visual = {"type": "card", "title": c["name"], "subtitle": "Contact", "fields": fields, "tags": c["aliases"]}
+            if c.get("photo"):
+                visual["image"] = c["photo"]
+        return ToolResult(data=result, visual=visual)
 
     @tool(
         "Add a person to the contacts file.",

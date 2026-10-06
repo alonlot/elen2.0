@@ -7,3 +7,4 @@ aliases = ["Dana"]
 emails = ["dana@example.com"]
 phones = ["+972500000000"]
 notes = "Acme, project manager"
+# photo = "~/Pictures/dana.jpg"   # shown on the contact card

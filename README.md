@@ -198,8 +198,12 @@ account.
 
 ## Visuals
 
-The HUD types are `calendar`, `list`, `stats`, `table`, `text`, `email`, `image` and
-`panels`. See [docs/VISUALS.md](docs/VISUALS.md).
+Visuals are generic. The brain can put **any JSON** on the screen with the `data` type, and
+the HUD lays it out by itself: objects become label/value rows, lists of objects become
+tables, lists of words become tags. Nothing has to be defined first. For a better look there
+are also `card` (a person, place or thing), `chart` (bar / line), `timeline`, `calendar`,
+`list`, `stats`, `table`, `text`, `email`, `image`, and `panels` to combine up to four. See
+[docs/VISUALS.md](docs/VISUALS.md).
 
 ## Files
 

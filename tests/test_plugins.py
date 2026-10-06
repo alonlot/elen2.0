@@ -49,7 +49,34 @@ def test_vcf():
 
 
 def test_visual_normalise():
-    v = normalise({"type": "weird", "body": "x" * 9000})
+    v = normalise({"type": "text", "body": "x" * 9000})
     assert v["type"] == "text" and len(v["body"]) <= 4000
     p = normalise({"type": "panels", "panels": [{"type": "panels", "panels": [{}]}]})
     assert p["panels"][0]["panels"] == []
+
+
+def test_unknown_visual_becomes_auto_data():
+    v = normalise({"type": "person", "title": "Dana", "name": "Dana Levi", "kids": ["Noa", "Ari"]})
+    assert v["type"] == "data" and v["title"] == "Dana"
+    assert v["data"] == {"name": "Dana Levi", "kids": ["Noa", "Ari"]}
+
+
+def test_data_any_json_is_trimmed():
+    deep = {"a": {"b": {"c": {"d": {"e": {"f": 1}}}}}, "long": "x" * 5000, "many": list(range(100))}
+    v = normalise({"type": "data", "data": deep})
+    assert len(v["data"]["many"]) == 40 and len(v["data"]["long"]) <= 600
+    assert isinstance(v["data"]["a"]["b"]["c"]["d"], str)  # depth limit
+
+
+def test_card_and_chart():
+    c = normalise({"type": "card", "title": "Dana", "fields": [{"label": "Email", "value": "d@x.io"}], "tags": ["VIP"]})
+    assert c["fields"][0]["value"] == "d@x.io" and c["tags"] == ["VIP"]
+    ch = normalise({"type": "chart", "kind": "line", "labels": ["a", "b"], "series": [{"name": "s", "values": [1, "2", "x"]}]})
+    assert ch["series"][0]["values"] == [1.0, 2.0]
+
+
+async def test_single_contact_shows_a_card(make_core, env):
+    (env / "cfg" / "contacts.toml").write_text('[[contact]]\nname = "Dana Levi"\nemails = ["dana@example.com"]\n')
+    core = await make_core([])
+    res = await core.tools["contacts__find_contact"].func(query="dana")
+    assert res.visual["type"] == "card" and res.visual["fields"][0]["value"] == "dana@example.com"

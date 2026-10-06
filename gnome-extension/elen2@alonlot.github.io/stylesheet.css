@@ -177,6 +177,44 @@
 .elen-email-subject { font-size: 14pt; font-weight: bold; color: #e9fdff; padding: 6px 0; }
 .elen-image-view { height: 380px; }
 
+/* data (automatic layout of any JSON) */
+.elen-data { spacing: 4px; }
+.elen-data-nested {
+  spacing: 4px; padding: 4px 0 4px 12px;
+  border-left: 1px solid rgba(62, 232, 255, 0.25);
+}
+.elen-data-row { spacing: 12px; padding: 3px 0; border-bottom: 1px solid rgba(62, 232, 255, 0.08); }
+.elen-data-key { font-family: monospace; font-size: 8.5pt; color: #3ee8ff; width: 150px; padding-top: 2px; }
+.elen-data-value { color: #e9fdff; font-size: 10.5pt; }
+.elen-data-section { font-family: monospace; font-size: 9pt; font-weight: bold; color: #3ee8ff; padding-top: 8px; }
+.elen-data-list { spacing: 8px; }
+.elen-data-tags { padding: 2px 0; }
+
+/* card (one person, place or thing) */
+.elen-card { spacing: 10px; }
+.elen-card-top { spacing: 16px; }
+.elen-card-image {
+  width: 96px; height: 96px; border-radius: 48px;
+  border: 2px solid rgba(62, 232, 255, 0.7);
+}
+
+/* chart */
+.elen-chart-wrap { spacing: 8px; }
+.elen-chart { spacing: 6px; }
+.elen-chart-row { spacing: 12px; }
+.elen-chart-label { width: 140px; color: #d7f7ff; font-size: 10pt; }
+.elen-chart-bars { spacing: 3px; }
+.elen-chart-bar { height: 14px; border-radius: 3px; margin-right: 8px; }
+.elen-chart-value { font-family: monospace; font-size: 9pt; color: rgba(191, 246, 255, 0.8); }
+.elen-chart-area { min-height: 220px; }
+
+/* timeline */
+.elen-timeline { spacing: 6px; }
+.elen-tl-row { spacing: 12px; }
+.elen-tl-time { font-family: monospace; font-size: 10pt; color: #3ee8ff; width: 110px; }
+.elen-tl-line { width: 3px; border-radius: 3px; background-color: rgba(62, 232, 255, 0.4); }
+.elen-tl-text { spacing: 2px; padding-bottom: 6px; }
+
 /* panels */
 .elen-panels { spacing: 12px; }
 .elen-panels-row { spacing: 12px; }
