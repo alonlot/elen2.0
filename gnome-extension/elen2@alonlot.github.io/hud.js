@@ -480,6 +480,43 @@ export class Hud {
         this._timeout = 0;
         this._toast = null;
         this._toastTimeout = 0;
+        this._backdrop = null;
+    }
+
+    // An invisible layer behind the visual: a click anywhere outside the visual closes it.
+    // It sits below the top bar, so the bar (and the ELEN button) stays usable. It takes no
+    // keyboard focus, so typing in other apps is not affected.
+    _addBackdrop() {
+        const backdrop = new St.Widget({
+            reactive: true,
+            x: 0,
+            y: 0,
+            width: global.stage.width,
+            height: global.stage.height,
+            style_class: 'elen-hud-backdrop',
+        });
+        backdrop.connect('button-press-event', () => {
+            this.hide();
+            return Clutter.EVENT_STOP;
+        });
+        backdrop.connect('touch-event', (_a, event) => {
+            if (event.type() === Clutter.EventType.TOUCH_BEGIN)
+                this.hide();
+            return Clutter.EVENT_STOP;
+        });
+        Main.layoutManager.addTopChrome(backdrop, {affectsInputRegion: true});
+        const panelBox = Main.layoutManager.panelBox;
+        if (panelBox?.get_parent() === backdrop.get_parent())
+            backdrop.get_parent().set_child_below_sibling(backdrop, panelBox);
+        this._backdrop = backdrop;
+    }
+
+    _removeBackdrop() {
+        if (this._backdrop) {
+            Main.layoutManager.removeChrome(this._backdrop);
+            this._backdrop.destroy();
+            this._backdrop = null;
+        }
     }
 
     get actor() {
@@ -525,6 +562,7 @@ export class Hud {
         frame.add_child(scroll);
         frame.add_child(new St.Label({text: 'ELEN 2.0  //  VISUAL INTERFACE', style_class: 'elen-hud-footer', x_align: Clutter.ActorAlign.END}));
 
+        this._addBackdrop();
         Main.layoutManager.addTopChrome(frame, {affectsInputRegion: true});
         frame.set_position(
             monitor.x + Math.floor((monitor.width - width) / 2),
@@ -546,6 +584,7 @@ export class Hud {
     }
 
     hide(instant = false) {
+        this._removeBackdrop();
         if (this._timeout) {
             GLib.source_remove(this._timeout);
             this._timeout = 0;

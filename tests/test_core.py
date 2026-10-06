@@ -110,3 +110,21 @@ async def test_submit_returns_quickly(make_core):
     assert isinstance(rid, str)
     await asyncio.sleep(0.05)
     assert core.history.display[-1]["text"] == "hi"
+
+
+async def test_visual_is_saved_and_can_be_opened_again(make_core, env):
+    spec = {"type": "text", "title": "Note", "body": "hi"}
+    core = await make_core([call("ui__show_visual", visual=spec), say("Shown.")])
+    shown = []
+    core.subscribe(lambda k, p: k == "visual" and shown.append(p))
+    await core.ask("show a note")
+    reply = core.history.display[-1]
+    (ref,) = reply["meta"]["visuals"]
+    assert ref["title"] == "Note" and ref["id"] == shown[0]["id"]
+    # after a restart the saved visual is still there
+    again = History(env / "data" / "history.json")
+    assert again.visuals[ref["id"]]["body"] == "hi"
+    assert core.reshow_visual(ref["id"]) is True and shown[-1]["id"] == ref["id"]
+    assert core.reshow_visual("nope") is False
+    core.clear_history()
+    assert core.reshow_visual(ref["id"]) is False

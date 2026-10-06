@@ -230,6 +230,10 @@ account.
 
 ## Visuals
 
+A click anywhere outside a visual closes it (the top bar stays usable, and typing in other
+apps is not affected). Elen's reply in the chat then has an **Open visualization** button that
+shows the same visual again, also after a restart, until you press CLEAR.
+
 Visuals are generic. The brain can put **any JSON** on the screen with the `data` type, and
 the HUD lays it out by itself: objects become label/value rows, lists of objects become
 tables, lists of words become tags. Nothing has to be defined first. For a better look there

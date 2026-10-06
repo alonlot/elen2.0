@@ -40,6 +40,11 @@ class ElenInterface(ServiceInterface):
         return json.dumps(self.core.history.display, ensure_ascii=False)
 
     @method()
+    def ShowVisual(self, visual_id: "s") -> "b":
+        """Show a saved visual again."""
+        return self.core.reshow_visual(visual_id)
+
+    @method()
     def ClearHistory(self) -> "b":
         self.core.clear_history()
         return True

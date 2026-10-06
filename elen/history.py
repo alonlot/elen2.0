@@ -21,6 +21,9 @@ class History:
         self.max_tool_chars = max_tool_chars
         self.display: list[dict[str, Any]] = []
         self.transcript: list[dict[str, Any]] = []
+        # Visuals shown in this chat, by id, so the chat can open them again.
+        self.visuals: dict[str, dict[str, Any]] = {}
+        self.max_visuals = 50
         self.load()
 
     def load(self) -> None:
@@ -28,22 +31,31 @@ class History:
             data = json.loads(self.path.read_text(encoding="utf-8"))
             self.display = data.get("display", [])
             self.transcript = data.get("transcript", [])
+            self.visuals = data.get("visuals", {})
         except (OSError, ValueError):
-            self.display, self.transcript = [], []
+            self.display, self.transcript, self.visuals = [], [], {}
 
     def save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.path.with_suffix(".tmp")
         tmp.write_text(
-            json.dumps({"display": self.display, "transcript": self.transcript}, ensure_ascii=False),
+            json.dumps(
+                {"display": self.display, "transcript": self.transcript, "visuals": self.visuals},
+                ensure_ascii=False,
+            ),
             encoding="utf-8",
         )
         tmp.chmod(0o600)
         tmp.replace(self.path)
 
     def clear(self) -> None:
-        self.display, self.transcript = [], []
+        self.display, self.transcript, self.visuals = [], [], {}
         self.save()
+
+    def add_visual(self, spec: dict[str, Any]) -> None:
+        self.visuals[spec["id"]] = spec
+        while len(self.visuals) > self.max_visuals:
+            self.visuals.pop(next(iter(self.visuals)))
 
     def add_display(self, role: str, text: str, **meta: Any) -> dict[str, Any]:
         item = {"id": uuid.uuid4().hex[:12], "role": role, "text": text, "time": time.time()}

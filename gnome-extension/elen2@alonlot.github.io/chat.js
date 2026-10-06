@@ -221,12 +221,36 @@ class ElenIndicator extends PanelMenu.Button {
             this._ids.add(m.id);
         if (m.role === 'user')
             this._addLabel(m.text, 'elen-msg user', m.meta?.source === 'voice' ? '🎙 ' : '');
-        else if (m.role === 'assistant')
+        else if (m.role === 'assistant') {
             this._addLabel(plain(m.text), `elen-msg elen${m.meta?.warning ? ' warned' : ''}${m.meta?.error ? ' error' : ''}`);
+            if (m.meta?.visuals?.length)
+                this._addVisualButtons(m.meta.visuals);
+        }
         else
             this._addLabel(m.text, 'elen-msg activity', '· ');
         if (scroll)
             this._scrollToEnd();
+    }
+
+    // "Open visualization" under Elen's reply: shows the same visual again.
+    _addVisualButtons(visuals) {
+        const bar = new St.BoxLayout({style_class: 'elen-visual-bar', x_expand: true});
+        for (const v of visuals) {
+            const button = new St.Button({
+                style_class: 'elen-visual-btn',
+                label: `◈  Open visualization · ${String(v.title ?? '').toUpperCase()}`,
+                can_focus: true,
+            });
+            button.connect('clicked', () => {
+                this.menu.close();
+                this._client.call('ShowVisual', [v.id]).then(ok => {
+                    if (!ok)
+                        this._addLabel('This visualization is no longer saved.', 'elen-msg activity', '· ');
+                }).catch(() => {});
+            });
+            bar.add_child(button);
+        }
+        this._messages.add_child(bar);
     }
 
     _addLabel(text, styleClass, prefix = '') {

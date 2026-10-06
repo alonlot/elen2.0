@@ -136,6 +136,7 @@ class Elen:
         self._current: asyncio.Task | None = None
         self._speak = False
         self._spoke_streaming = False
+        self._turn_visuals: list[dict[str, str]] | None = None
         self.wake = None
         self.wake_error = ""
         self._configure()
@@ -344,6 +345,7 @@ class Elen:
             self._speak = self._should_speak(source)
             self.speaker.begin()
             try:
+                self._turn_visuals = []
                 reply, meta = await self.run_turn(text)
             except asyncio.CancelledError:
                 task = asyncio.current_task()
@@ -358,6 +360,9 @@ class Elen:
                 reply, meta = f"Something went wrong: {e}", {"error": True}
             finally:
                 self._current = None
+            if self._turn_visuals:
+                meta["visuals"] = self._turn_visuals  # the chat shows an "Open visualization" button
+            self._turn_visuals = None
             item = self.history.add_display("assistant", reply, request_id=request_id, **meta)
             self.history.save()
             self.emit("message", item)
@@ -723,10 +728,24 @@ class Elen:
         return True
 
     # ----- visuals -----------------------------------------------------
-    async def show_visual(self, spec: dict[str, Any], already_normalised: bool = False) -> None:
+    async def show_visual(self, spec: dict[str, Any], already_normalised: bool = False) -> str:
+        """Show a visual and keep it, so the chat can open it again later. Returns its id."""
         if not already_normalised:
             spec = normalise(spec, int(self.config["ui"].get("visual_seconds", 25)))
+        spec = {**spec, "id": uuid.uuid4().hex[:12]}
+        self.history.add_visual(spec)
+        if self._turn_visuals is not None:
+            self._turn_visuals.append({"id": spec["id"], "title": spec.get("title") or spec["type"]})
         self.emit("visual", spec)
+        return spec["id"]
+
+    def reshow_visual(self, visual_id: str) -> bool:
+        """Show a saved visual again (the "Open visualization" button in the chat)."""
+        spec = self.history.visuals.get(visual_id)
+        if spec is None:
+            return False
+        self.emit("visual", spec)
+        return True
 
     # ----- screen ------------------------------------------------------
     async def capture_screen(self) -> Path:
