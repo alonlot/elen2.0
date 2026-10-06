@@ -15,149 +15,20 @@ timezone = ""        # informative only; Elen uses the system time zone
 # Change these here, in the settings window (gear button in the chat), or with
 #   elen set brain.model llama3.1:70b
 #
-# The brain works with ANY LLM:
+# The brain is ANY LLM, called through its API:
 #   provider = "openai_compatible"  any server with the OpenAI chat API (default)
 #   provider = "ollama"             the same, base_url defaults to http://localhost:11434/v1
 #   provider = "anthropic"          Claude API
-#   provider = "claude_cli"         `claude -p` (Claude Code) runs the agent, with your login
-#
-# base_url examples for openai_compatible:
-#   Ollama      http://localhost:11434/v1        LM Studio  http://localhost:1234/v1
-#   vLLM        http://localhost:8000/v1         LiteLLM    http://localhost:4000/v1
-#   OpenAI      https://api.openai.com/v1        OpenRouter https://openrouter.ai/api/v1
-#   Groq        https://api.groq.com/openai/v1   Mistral    https://api.mistral.ai/v1
-#   DeepSeek    https://api.deepseek.com/v1
-#   Gemini      https://generativelanguage.googleapis.com/v1beta/openai
-
-[brain]
-provider = "openai_compatible"
-model = "qwen2.5:14b"           # any model name your server knows
-base_url = "http://localhost:11434/v1"
-api_key = ""                    # "env:OPENAI_API_KEY", "cmd:...", or empty for local servers
-tool_mode = "auto"              # auto | native | prompt. "prompt" = for models without tool calling
-headers = {}                    # extra HTTP headers, for example {"X-Team" = "home"}
-extra_body = {}                 # extra request fields, for example {temperature = 0.3}
-timeout = 300
-max_tokens = 8000
-max_steps = 12                  # max tool rounds per request
-effort = ""                     # anthropic / claude_cli only: low | medium | high | xhigh | max
-
-# claude_cli only (when provider = "claude_cli"):
-# binary = "claude"
-# auth_token = ""               # ANTHROPIC_AUTH_TOKEN for a gateway; base_url -> ANTHROPIC_BASE_URL
-# builtin_tools = []            # Claude Code's own tools. Do NOT add Bash/Edit/Write: they act
-#                               # outside Elen's approval dialogs.
-# cli_timeout = 1800            # seconds for one request, approvals included
-
-[vision]                        # looks at screenshots; needs a model that accepts images
-provider = ""                   # empty = same as [brain]; fields set here override the brain
-# model = "qwen2.5vl:7b"
-
-[stt]                 # speech to text
-provider = "openai"   # openai | faster_whisper | command | none
-model = "whisper-1"   # faster_whisper: "small", "medium", "large-v3"...
-api_key = "env:OPENAI_API_KEY"
-base_url = "https://api.openai.com/v1"   # Groq: https://api.groq.com/openai/v1 with model "whisper-large-v3"
-language = ""         # empty = auto detect, or "en", "he"...
-command = []          # provider "command": ["whisper-cli", "-m", "/path/model.bin", "-nt", "-f", "{wav}"]
-record_command = []   # empty = auto (arecord / parecord / pw-record)
-silence_seconds = 1.5 # stop recording after this much silence
-silence_threshold = 600
-max_seconds = 30
-auto_send = true      # send the transcript at once
-
-[tts]                 # optional spoken replies
-enabled = false
-command = ["spd-say", "-w", "{text}"]   # or piper: ["sh", "-c", "piper -m ~/voices/en.onnx --output-raw | aplay -r 22050 -f S16_LE -t raw -"]
-speak_on = "voice"    # voice = only answers to voice questions | always
-max_chars = 400
-
-[ui]
-auto_visualize = true # tools that return a visual show it on screen at once
-visual_seconds = 25   # 0 = stay until closed
-
-[history]
-max_context_messages = 40
-max_tool_result_chars = 12000
-
-[guard]
-confirm_timeout = 300     # seconds; no answer = rejected
-action_claim_check = true # flag replies that claim an action that did not happen
-verify_recipients = true  # check recipients against contacts / your words / read data
-# Permanent rules (from "never do that again"): check them in code, not only in the prompt.
-rule_check = "actions"    # actions = every non-read tool | all = every tool | off
-rule_check_replies = true # check each final reply too; a reply that breaks a rule is rewritten once
-# Change the risk level of a tool or of a whole plugin: read | low | write | dangerous
-# Lowering "write"/"dangerous" removes the approval step. Do this only if you accept the risk.
-[guard.overrides]
-# "screen" = "write"            # ask before every screenshot
-# "system__open_link" = "write"
-
-# ---------------------------------------------------------------- plugins
-[plugins]
-paths = []            # more folders with plugins
-
-[plugins.system]
-enabled = true
-command_timeout = 120
-
-[plugins.screen]
-enabled = true
-
-[plugins.memory]
-enabled = true
-max_facts_in_prompt = 60  # newest facts in every prompt; older ones via memory__recall. All rules always go in.
-
-# Model for the rule check. Empty provider = same as [brain].
-# A small fast model is enough, for example:
-# [checker]
-# model = "qwen2.5:7b"
-
-[plugins.contacts]
-enabled = true
-# file = "~/.config/elen/contacts.toml"
-vcf_paths = []        # for example ["~/Documents/contacts.vcf"]
-
-[plugins.email]
-enabled = false
-
-[[plugins.email.accounts]]
-name = "work"
-address = "me@example.com"
-display_name = "My Name"
-imap_host = "mail.example.com"
-imap_port = 993
-smtp_host = "mail.example.com"
-smtp_port = 587       # 587 STARTTLS, 465 SSL
-username = "me@example.com"
-password = "cmd:secret-tool lookup elen mail-work"
-sent_folder = "Sent"
-drafts_folder = "Drafts"
-signature = ""
-
-[plugins.calendar]
-enabled = false
-
-[[plugins.calendar.sources]]
-name = "work"
-type = "caldav"       # Nextcloud, iCloud, Fastmail, Radicale, SOGo...
-url = "https://cloud.example.com/remote.php/dav"
-username = "me"
-password = "cmd:secret-tool lookup elen caldav"
-calendars = []        # empty = all
-default = true
-
-# [[plugins.calendar.sources]]
-# name = "google"
-# type = "ics"        # read only: Google Calendar > Settings > "Secret address in iCal format"
-# url = "https://calendar.google.com/calendar/ical/.../basic.ics"
-
-[plugins.claude_code]
-# A separate tool: hand one task to a second `claude -p` with full control of the PC
-# (all permission checks bypassed). Each task still needs your approval.
-enabled = false
+# To act on the computer, the brain calls Claude Code (`claude -p`) as a TOOL:
+# see [plugins.claude_code]
+# The brain's hands: it can give a task to `claude -p` (Claude Code), which edits files and
+# runs commands. You approve each task first (you can edit the task text).
+enabled = true              # turns itself off with a message if `claude` is not installed
 binary = "claude"
-bypass_permissions = true   # adds --dangerously-skip-permissions
+bypass_permissions = true   # adds --dangerously-skip-permissions: no more questions inside a task
+model = ""                  # empty = Claude Code default; or "opus", "sonnet", a full model id
+base_url = ""               # optional ANTHROPIC_BASE_URL for Claude Code (gateway / proxy)
+api_key = ""                # empty = your `claude` login
 workdir = "~"
 timeout = 900
 extra_args = []

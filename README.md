@@ -13,10 +13,12 @@ A Jarvis-like personal assistant for Ubuntu 24.04 (GNOME 46, Wayland).
   tables, text, screenshots. Any plugin can show any of these.
 - **Screen vision**: Elen can take a screenshot and ask the vision model about it when it
   decides that helps ("what is this error?").
-- **The brain is any LLM.** The default provider speaks the OpenAI chat API, which almost every
-  server uses: Ollama, LM Studio, vLLM, LiteLLM, OpenAI, OpenRouter, Groq, Gemini, Mistral,
-  DeepSeek. Models without native tool calling still work (prompt-based tools). Optional
-  providers: the Claude API, and `claude -p` as the agent.
+- **The brain is any LLM**, called through its normal API. The default provider speaks the
+  OpenAI chat API, which almost every server uses: Ollama, LM Studio, vLLM, LiteLLM, OpenAI,
+  OpenRouter, Groq, Gemini, Mistral, DeepSeek. The Claude API is also a provider. Models without
+  native tool calling still work (prompt-based tools).
+- **Claude Code is the brain's hands.** To act on the computer, the brain calls `claude -p` as a
+  tool. You approve each task, then Claude Code does the work and its steps appear in the chat.
 - **Separate models** for the brain, vision, the rule checker and speech to text. Each one has
   a free-text model name and a custom URL. Change them in the settings window (gear button in
   the chat, with presets) or with `elen set brain.model llama3.1:70b`.
@@ -32,26 +34,27 @@ A Jarvis-like personal assistant for Ubuntu 24.04 (GNOME 46, Wayland).
 
 ```
  GNOME Shell extension (JavaScript)          Elen daemon (Python, systemd user service)
- ┌──────────────────────────────┐   D-Bus    ┌──────────────────────────────────────┐
- │ panel orb + chat + CLEAR tab │◄──────────►│ agent loop + guard + plugins          │
- │ HUD visuals                  │  session   │ guard: approvals, recipient checks,   │
- │ approval dialogs             │    bus     │        rule checks, audit log         │
- │ screenshots (Shell API)      │            │ STT recorder + transcriber, TTS       │
- │ settings window              │            └───────────────┬──────────────────────┘
- └──────────────────────────────┘                            │ brain provider (choose one)
-          ┌───────────────────────────┬──────────────────────┼─────────────────────────┐
-   openai_compatible (default)    ollama              anthropic            claude_cli
-   any OpenAI-API server          local               Claude API           `claude -p` + MCP
+ ┌──────────────────────────────┐   D-Bus    ┌──────────────────────────────────────────┐
+ │ panel orb + chat + CLEAR tab │◄──────────►│ agent loop                               │
+ │ HUD visuals                  │  session   │   brain = any LLM (normal API call) ─────┼──► OpenAI-API server
+ │ approval dialogs             │    bus     │     │ asks for a tool                    │    (Ollama, OpenAI, ...)
+ │ screenshots (Shell API)      │            │     ▼                                    │    or Claude API
+ │ settings window              │            │ guard: approval, recipients, rules       │
+ └──────────────────────────────┘            │     │ approved                           │
+                                              │     ▼                                    │
+                                              │ plugins: mail, calendar, contacts,       │
+                                              │   memory, screen, system,                │
+                                              │   claude_code ──► `claude -p` task       │
+                                              └──────────────────────────────────────────┘
 ```
 
 GNOME on Wayland does not let a normal app place its own window at the top of the screen. For
 this reason the UI is a GNOME Shell extension, and the logic is a separate daemon. The
 extension only draws; all decisions and all data stay in the daemon.
 
-With every brain provider, the brain only asks for a tool; the daemon runs it, and the guard
-(approval dialog, recipient check, rule check) decides first. With `claude_cli`, the tools reach
-`claude -p` through an MCP server (`mcp__elen__...`), and Claude Code's own Bash/Edit/Write
-tools are off.
+The brain only asks for a tool. The daemon runs it, and the guard (approval dialog, recipient
+check, rule check) decides first. Claude Code is one of the tools: the brain writes a task,
+you approve it, and `claude -p` does the work on the computer.
 
 ## Install
 
@@ -64,7 +67,7 @@ Then:
 
 1. Choose the brain. The default is a local [Ollama](https://ollama.com) server:
    `ollama pull qwen2.5:14b`. For any other LLM, use the gear button in the chat (presets for
-   LM Studio, vLLM, LiteLLM, OpenAI, OpenRouter, Groq, Gemini, Mistral, DeepSeek, Claude) or
+   LM Studio, vLLM, LiteLLM, OpenAI, OpenRouter, Groq, Gemini, Mistral, DeepSeek, Claude API) or
    edit `[brain]` in the config. Put keys in `~/.config/elen/env` and refer to them as
    `env:NAME`. For the default voice transcription, set `OPENAI_API_KEY` (or choose
    `faster_whisper` for offline speech to text).
@@ -91,7 +94,7 @@ In the settings window (gear button in the chat header, or the Extensions app), 
 
 Every model section has:
 
-- `provider`: `openai_compatible` (any LLM server), `ollama`, `anthropic` or `claude_cli`.
+- `provider`: `openai_compatible` (any LLM server), `ollama` or `anthropic`.
   Empty in `[vision]` / `[checker]` means "same as the brain".
 - `model`: free text, any name your server knows.
 - `base_url`: custom URL of the server.
@@ -173,14 +176,25 @@ so it is not a mathematical guarantee. For a rule that must never be broken, als
 setting, for example `[guard.overrides]` or disabling the plugin. The checker can use a
 cheaper model: `[checker]` in the config. To turn the checks off: `[guard] rule_check = "off"`.
 
-## Full PC control with Claude Code
+## Claude Code: the brain's hands
 
-For real computer work, enable `[plugins.claude_code]` (needs the Claude Code CLI). Elen can
-then hand a task to
-`claude -p "<task>" --dangerously-skip-permissions`. Inside that task, Claude Code runs
-commands and edits files **without asking**. Elen still shows you the exact task text (you
-can edit it) and asks once before it starts. Use this plugin only if you understand that an
-approved task has full access to your user account.
+`[plugins.claude_code]` is on by default (it turns itself off with a message if the `claude` CLI
+is not installed). The brain uses it for real work on the computer: files, code, packages,
+settings, multi-step shell work.
+
+1. The brain writes a complete task, for example "Install htop and add an alias top=htop to
+   ~/.bashrc".
+2. The approval dialog shows the exact task text, in red, with a 3 second arming delay. You can
+   edit the task.
+3. After you approve, `claude -p` runs it with `--dangerously-skip-permissions` (setting
+   `bypass_permissions`): no more questions inside that task. Each step appears in the chat
+   ("Claude Code › Bash apt install htop").
+4. The report comes back to the brain and appears on screen. "Continue the last task" resumes
+   the same Claude Code session.
+
+Claude Code has its own model and URL settings (`model`, `base_url`), separate from the brain.
+Use this plugin only if you understand that an approved task has full access to your user
+account.
 
 ## Visuals
 

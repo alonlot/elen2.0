@@ -34,9 +34,9 @@ EXAMPLE_CONFIG = Path(__file__).resolve().parent.parent / "config" / "config.exa
 DEFAULTS: dict[str, Any] = {
     "user": {"name": "", "language": "en", "timezone": ""},
     "brain": {
-        # Any LLM. "openai_compatible" talks to every server with the OpenAI chat API
-        # (Ollama, LM Studio, vLLM, LiteLLM, OpenAI, OpenRouter, Groq, Gemini, Mistral...).
-        # Other providers: "anthropic" (Claude API), "claude_cli" (`claude -p` runs the agent).
+        # Any LLM, called through its API. "openai_compatible" talks to every server with the
+        # OpenAI chat API (Ollama, LM Studio, vLLM, LiteLLM, OpenAI, OpenRouter, Groq, Gemini,
+        # Mistral...). "anthropic" = Claude API. Claude Code is a tool, see plugins.claude_code.
         "provider": "openai_compatible",
         "model": "qwen2.5:14b",
         "base_url": "http://localhost:11434/v1",
@@ -47,16 +47,8 @@ DEFAULTS: dict[str, Any] = {
         "timeout": 300,
         "max_tokens": 8000,
         "max_steps": 12,
-        # Only for some providers:
+        # anthropic only:
         "effort": "",
-        "auth_token": "",
-        "env": {},
-        "binary": "claude",
-        "builtin_tools": [],
-        "setting_sources": "",
-        "replace_system_prompt": True,
-        "workdir": "~",
-        "extra_args": [],
         "fallbacks": False,
     },
     # Empty provider = use the [brain] settings (fields set here override them).
@@ -100,7 +92,7 @@ DEFAULTS: dict[str, Any] = {
         "email": {"enabled": False, "accounts": []},
         "calendar": {"enabled": False, "sources": []},
         "claude_code": {
-            "enabled": False,
+            "enabled": True,
             "binary": "claude",
             "bypass_permissions": True,
             "workdir": "~",

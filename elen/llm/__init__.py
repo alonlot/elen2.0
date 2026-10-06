@@ -12,7 +12,8 @@ def make_provider(cfg: dict[str, Any]) -> LLMProvider:
     """Create a model provider from a [brain], [vision] or [checker] config section.
 
     The default is "openai_compatible": any LLM server with the OpenAI chat API.
-    "anthropic" (Claude API) and "claude_cli" (`claude -p` as the agent) are options.
+    "anthropic" (Claude API) is the other option. Claude Code (`claude -p`) is not a
+    brain: it is a tool the brain can call (plugin claude_code).
     """
     kind = (cfg.get("provider") or "openai_compatible").lower()
     if kind in GENERIC:
@@ -21,10 +22,6 @@ def make_provider(cfg: dict[str, Any]) -> LLMProvider:
         if kind == "ollama" and not cfg.get("base_url"):
             cfg = {**cfg, "base_url": "http://localhost:11434/v1"}
         return OpenAICompatProvider(cfg)
-    if kind in ("claude_cli", "claude_code", "claude-p"):
-        from .claude_cli import ClaudeCLIProvider
-
-        return ClaudeCLIProvider(cfg)
     if kind in ("anthropic", "claude"):
         from .anthropic_provider import AnthropicProvider
 
@@ -36,7 +33,7 @@ def make_provider(cfg: dict[str, Any]) -> LLMProvider:
         return provider
     raise LLMError(
         f"Unknown model provider '{kind}'. Use 'openai_compatible' (any LLM server), "
-        "'ollama', 'anthropic' or 'claude_cli'."
+        "'ollama' or 'anthropic'. (claude -p is a tool: [plugins.claude_code])"
     )
 
 

@@ -22,9 +22,7 @@ import asyncio
 import json
 import logging
 import re
-import os
 import shutil
-import sys
 import tempfile
 import time
 import uuid
@@ -62,13 +60,6 @@ CHECKER_SYSTEM = (
     "rules and one item the assistant plans to do or say. Decide if the item breaks any rule. "
     "Flag only a clear conflict, not a weak association. Answer with JSON only, no other text: "
     '{"violates": true or false, "rule_ids": ["id", ...], "explanation": "one sentence"}'
-)
-
-
-CLI_NOTE = (
-    "\nIn this session your Elen tools are named mcp__elen__<plugin>__<tool> (for example "
-    "mcp__elen__ui__show_visual, mcp__elen__memory__add_rule). The instructions above use the "
-    "short names without the mcp__elen__ prefix.\n"
 )
 
 
@@ -175,84 +166,10 @@ class Elen:
     def checker(self, provider) -> None:
         self._checker = provider
 
-    @property
-    def agent_mode(self) -> bool:
-        """True when the brain is `claude -p`, which runs its own agent loop."""
-        return bool(getattr(self.brain, "agent_mode", False))
-
     async def start(self) -> None:
         await self._load_plugins()
-        if self.agent_mode:
-            await self._start_tool_server()
-
-    async def _start_tool_server(self) -> None:
-        if getattr(self, "_tool_server", None) is not None:
-            return
-        base = os.environ.get("XDG_RUNTIME_DIR") or tempfile.gettempdir()
-        sock_dir = Path(base) / f"elen-{os.getuid()}"
-        sock_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
-        os.chmod(sock_dir, 0o700)
-        self.tool_socket = sock_dir / f"tools-{os.getpid()}.sock"
-        self.tool_socket.unlink(missing_ok=True)
-        self._tool_server = await asyncio.start_unix_server(
-            self._serve_tool_client, path=str(self.tool_socket), limit=16 * 1024 * 1024
-        )
-        os.chmod(self.tool_socket, 0o600)
-        self.mcp_config = self.data_dir / "claude-mcp.json"
-        self.mcp_config.write_text(
-            json.dumps(
-                {
-                    "mcpServers": {
-                        "elen": {
-                            "type": "stdio",
-                            "command": sys.executable,
-                            "args": ["-m", "elen.mcp_bridge", "--socket", str(self.tool_socket)],
-                            "env": {"PYTHONPATH": str(Path(__file__).resolve().parent.parent)},
-                        }
-                    }
-                }
-            )
-        )
-        log.info("tool socket for claude -p: %s", self.tool_socket)
-
-    async def _stop_tool_server(self) -> None:
-        server = getattr(self, "_tool_server", None)
-        if server is not None:
-            server.close()
-            await server.wait_closed()
-            self._tool_server = None
-            self.tool_socket.unlink(missing_ok=True)
-
-    async def _serve_tool_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
-        try:
-            req = json.loads(await reader.readline() or b"{}")
-            if req.get("op") == "list":
-                resp: dict[str, Any] = {"tools": [t.schema() for t in self.tools.values()]}
-            elif req.get("op") == "call":
-                resp = await self.call_tool_from_agent(str(req.get("name", "")), req.get("arguments") or {})
-            else:
-                resp = {"content": "bad request", "is_error": True}
-        except Exception as e:  # noqa: BLE001
-            log.exception("tool socket request failed")
-            resp = {"content": json.dumps({"error": str(e)}), "is_error": True}
-        try:
-            writer.write(json.dumps(resp, ensure_ascii=False, default=str).encode() + b"\n")
-            await writer.drain()
-        finally:
-            writer.close()
-
-    async def call_tool_from_agent(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
-        """A tool call from `claude -p`, through the MCP bridge. The guard applies as usual."""
-        ctx = getattr(self, "_agent_ctx", None) or {"turn": [{"role": "user", "content": ""}], "executed": []}
-        call = ToolCall(id=uuid.uuid4().hex[:12], name=name, arguments=dict(arguments))
-        self.set_state("working")
-        msg = await self.execute_tool(call, ctx["turn"], ctx["executed"])
-        ctx["turn"].append(msg)
-        self.set_state("thinking")
-        return {"content": msg["content"], "is_error": msg["is_error"]}
 
     async def stop(self) -> None:
-        await self._stop_tool_server()
         for plugin in self.plugins.values():
             try:
                 await plugin.teardown()
@@ -390,8 +307,6 @@ class Elen:
 
     async def run_turn(self, text: str) -> tuple[str, dict[str, Any]]:
         """Run the agent loop for one user message."""
-        if self.agent_mode:
-            return await self._run_turn_cli(text)
         turn: list[dict[str, Any]] = [{"role": "user", "content": text}]
         executed: list[dict[str, Any]] = []
         system = self._system_prompt(text)
@@ -429,49 +344,6 @@ class Elen:
             final = "I stopped because the task needed too many steps. Tell me how to continue."
             turn.append({"role": "assistant", "content": final})
         self.history.add_turn(turn)
-        return self._finish_turn(text, final, executed)
-
-    async def _run_turn_cli(self, text: str) -> tuple[str, dict[str, Any]]:
-        """One turn with `claude -p` as the agent. Tools come back through the MCP bridge."""
-        turn: list[dict[str, Any]] = [{"role": "user", "content": text}]
-        executed: list[dict[str, Any]] = []
-        self._agent_ctx = {"turn": turn, "executed": executed}
-        system = self._system_prompt(text) + CLI_NOTE
-        pending: list[str] = []
-
-        async def on_event(kind: str, value: Any) -> None:
-            if kind == "text":
-                pending.append(value)
-            elif kind == "tool_use":
-                for t in pending:  # text said before a tool call is progress, not the answer
-                    await self.add_activity("elen", t)
-                pending.clear()
-
-        try:
-            session = self.history.meta.get("cli_session", "")
-            prompt = text if session else self.history.recap() + text
-            res = await self.brain.run_agent(prompt, system, self.mcp_config, session, on_event)
-            if res.is_error and session:
-                log.warning("claude -p session %s failed (%s); starting a new one", session, res.error[:200])
-                pending.clear()
-                res = await self.brain.run_agent(
-                    self.history.recap() + text, system, self.mcp_config, "", on_event
-                )
-            if res.is_error:
-                raise LLMError(f"claude -p: {res.error[:500]}")
-            self.history.meta["cli_session"] = res.session_id
-            final = res.text
-            conflict = await self._reply_rule_conflict(text, final)
-            if conflict:
-                note = self._rule_note(conflict)["content"]
-                again = await self.brain.run_agent(note, system, self.mcp_config, res.session_id, None)
-                if not again.is_error and again.text:
-                    final = again.text
-                    self.history.meta["cli_session"] = again.session_id
-        finally:
-            self._agent_ctx = None
-        self.history.data_texts.extend(m["content"] for m in turn if m["role"] == "tool")
-        self.history.add_turn([turn[0], {"role": "assistant", "content": final}])
         return self._finish_turn(text, final, executed)
 
     def _finish_turn(self, text: str, final: str, executed: list[dict[str, Any]]) -> tuple[str, dict[str, Any]]:
@@ -769,8 +641,6 @@ class Elen:
         await self.speaker.stop()
         self.set_state("listening")
         try:
-            import tempfile
-
             with tempfile.TemporaryDirectory(prefix="elen-") as tmp:
                 wav = await self.listener.recorder.record(Path(tmp) / "speech.wav")
                 self.set_state("transcribing")
@@ -786,6 +656,6 @@ class Elen:
 
     # ----- history -----------------------------------------------------
     def clear_history(self) -> None:
-        self.history.clear()  # also forgets the claude -p session
+        self.history.clear()
         self.guard.audit("history_cleared")
         self.emit("history_cleared", {})

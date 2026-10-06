@@ -6,9 +6,9 @@
   elen status     show models, plugins and tools
   elen config     print the config file path
   elen set KEY VALUE   change a setting, for example:
-                  elen set brain.provider claude_cli
-                  elen set brain.model opus
-                  elen set brain.base_url https://my-gateway.example.com
+                  elen set brain.base_url http://localhost:11434/v1
+                  elen set brain.model qwen2.5:14b
+                  elen set plugins.claude_code.model sonnet
 """
 
 from __future__ import annotations

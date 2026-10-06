@@ -12,7 +12,7 @@ from typing import Any
 
 from .config import config_path, ensure_user_config, load_config
 
-LLM_KEYS = ("provider", "model", "base_url", "api_key", "tool_mode", "effort", "auth_token")
+LLM_KEYS = ("provider", "model", "base_url", "api_key", "tool_mode", "effort")
 MODEL_SECTIONS = {
     "brain": LLM_KEYS,
     "vision": LLM_KEYS,
@@ -20,7 +20,7 @@ MODEL_SECTIONS = {
     "stt": ("provider", "model", "base_url", "api_key", "language"),
 }
 
-LLM_PROVIDERS = ["openai_compatible", "ollama", "anthropic", "claude_cli"]
+LLM_PROVIDERS = ["openai_compatible", "ollama", "anthropic"]
 PROVIDERS = {
     "brain": LLM_PROVIDERS,
     "vision": [""] + LLM_PROVIDERS,  # "" = same as brain
@@ -41,7 +41,6 @@ PRESETS = [
     {"name": "Mistral", "provider": "openai_compatible", "base_url": "https://api.mistral.ai/v1", "model": ""},
     {"name": "DeepSeek", "provider": "openai_compatible", "base_url": "https://api.deepseek.com/v1", "model": ""},
     {"name": "Anthropic API", "provider": "anthropic", "base_url": "", "model": "claude-opus-5-5"},
-    {"name": "claude -p (Claude Code)", "provider": "claude_cli", "base_url": "", "model": "opus"},
 ]
 
 

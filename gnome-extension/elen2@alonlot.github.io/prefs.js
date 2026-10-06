@@ -15,7 +15,8 @@ const SECTIONS = [
         key: 'brain', title: 'Brain (any LLM)',
         description: 'openai_compatible works with any server that has the OpenAI chat API: ' +
             'Ollama, LM Studio, vLLM, LiteLLM, OpenAI, OpenRouter, Groq, Gemini, Mistral, DeepSeek... ' +
-            'Pick a preset or type your own URL and model name.',
+            'Pick a preset or type your own URL and model name. ' +
+            'To act on the computer, the brain can call Claude Code (claude -p) as a tool.',
     },
     {key: 'vision', title: 'Vision', description: 'Looks at screenshots. Needs a model that accepts images. "same as brain" = brain settings.'},
     {
@@ -116,13 +117,12 @@ export default class ElenPreferences extends ExtensionPreferences {
             group.add(modeRow);
             rows[section.key].tool_mode = () => TOOL_MODES[modeRow.selected];
             const effortRow = new Adw.ComboRow({
-                title: 'Effort', subtitle: 'Only anthropic and claude_cli use it',
+                title: 'Effort', subtitle: 'Only the anthropic provider uses it',
                 model: Gtk.StringList.new(EFFORTS.map(e => e || 'default')),
             });
             effortRow.selected = Math.max(0, EFFORTS.indexOf(values.effort ?? ''));
             group.add(effortRow);
             rows[section.key].effort = () => EFFORTS[effortRow.selected];
-            entry('auth_token', 'Auth token (claude_cli gateways only)', true);
         }
 
         const applyGroup = new Adw.PreferencesGroup();
