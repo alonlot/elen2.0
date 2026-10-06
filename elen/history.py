@@ -24,6 +24,10 @@ class History:
         # Visuals shown in this chat, by id, so the chat can open them again.
         self.visuals: dict[str, dict[str, Any]] = {}
         self.max_visuals = 50
+        # Running summary of the transcript before the context window.
+        self.summary = ""
+        self.summary_untrusted = False  # the summarized part held outside content
+        self.summarized = 0  # number of transcript messages covered by the summary
         self.load()
 
     def load(self) -> None:
@@ -32,6 +36,9 @@ class History:
             self.display = data.get("display", [])
             self.transcript = data.get("transcript", [])
             self.visuals = data.get("visuals", {})
+            self.summary = data.get("summary", "")
+            self.summary_untrusted = data.get("summary_untrusted", False)
+            self.summarized = data.get("summarized", 0)
         except (OSError, ValueError):
             self.display, self.transcript, self.visuals = [], [], {}
 
@@ -40,7 +47,14 @@ class History:
         tmp = self.path.with_suffix(".tmp")
         tmp.write_text(
             json.dumps(
-                {"display": self.display, "transcript": self.transcript, "visuals": self.visuals},
+                {
+                    "display": self.display,
+                    "transcript": self.transcript,
+                    "visuals": self.visuals,
+                    "summary": self.summary,
+                    "summary_untrusted": self.summary_untrusted,
+                    "summarized": self.summarized,
+                },
                 ensure_ascii=False,
             ),
             encoding="utf-8",
@@ -50,6 +64,7 @@ class History:
 
     def clear(self) -> None:
         self.display, self.transcript, self.visuals = [], [], {}
+        self.summary, self.summary_untrusted, self.summarized = "", False, 0
         self.save()
 
     def add_visual(self, spec: dict[str, Any]) -> None:
@@ -73,6 +88,19 @@ class History:
                 if len(content) > self.max_tool_chars:
                     clean["content"] = content[: self.max_tool_chars] + "\n...[truncated]"
             self.transcript.append(clean)
+
+    def to_summarize(self, chunk: int = 10) -> tuple[int, list[dict[str, Any]]]:
+        """Messages that left the context window and are not in the summary yet.
+
+        Returns (new summarized count, messages). Waits until at least `chunk`
+        messages are waiting, and ends the batch before a user message.
+        """
+        window_start = max(0, len(self.transcript) - self.max_context)
+        while window_start < len(self.transcript) and self.transcript[window_start].get("role") != "user":
+            window_start += 1
+        if window_start - self.summarized < chunk:
+            return self.summarized, []
+        return window_start, self.transcript[self.summarized : window_start]
 
     def context(self) -> list[dict[str, Any]]:
         """The last messages, cut so the context starts at a user message."""

@@ -97,7 +97,12 @@ DEFAULTS: dict[str, Any] = {
         "max_chars": 400,
     },
     "ui": {"auto_visualize": True, "visual_seconds": 25},
-    "history": {"max_context_messages": 40, "max_tool_result_chars": 12000},
+    "history": {
+        "max_context_messages": 40,
+        "max_tool_result_chars": 12000,
+        "summarize": True,
+        "summarize_chunk": 10,
+    },
     "guard": {
         "confirm_timeout": 300,
         "action_claim_check": True,
@@ -112,7 +117,12 @@ DEFAULTS: dict[str, Any] = {
         "paths": [],
         "system": {"enabled": True},
         "screen": {"enabled": True},
-        "memory": {"enabled": True, "max_facts_in_prompt": 60},
+        "memory": {
+            "enabled": True,
+            "max_facts_in_prompt": 60,
+            "min_similarity": 0.45,
+            "embeddings": {"model": "", "base_url": "", "api_key": ""},
+        },
         "contacts": {"enabled": True, "vcf_paths": []},
         "email": {"enabled": False, "accounts": []},
         "calendar": {"enabled": False, "sources": []},

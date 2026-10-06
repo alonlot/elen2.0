@@ -21,6 +21,7 @@ import time
 import uuid
 from typing import Any
 
+from elen.embeddings import Embedder, cosine
 from elen.plugins import Plugin, ToolResult, tool
 
 WORD_RE = re.compile(r"\w+", re.UNICODE)
@@ -42,6 +43,20 @@ class MemoryPlugin(Plugin):
             self.items = []
         for item in self.items:
             item.setdefault("kind", "fact")
+        # Search by meaning: [plugins.memory] embeddings = {model, base_url, api_key}.
+        # base_url defaults to the brain URL when the brain is an OpenAI-compatible server.
+        emb_cfg = dict(self.config.get("embeddings") or {})
+        brain = self.ctx.setting("brain", default={}) or {}
+        if not emb_cfg.get("base_url") and brain.get("provider", "openai_compatible") not in ("anthropic", "claude"):
+            emb_cfg["base_url"] = brain.get("base_url", "")
+            emb_cfg.setdefault("api_key", brain.get("api_key", ""))
+        self.embedder = Embedder(emb_cfg)
+        self.vec_path = self.ctx.data_dir / "vectors.json"
+        try:
+            stored = json.loads(self.vec_path.read_text())
+            self.vectors = stored["vectors"] if stored.get("model") == self.embedder.model else {}
+        except (OSError, ValueError, KeyError):
+            self.vectors = {}
 
     def _save(self) -> None:
         tmp = self.path.with_suffix(".tmp")
@@ -110,26 +125,47 @@ class MemoryPlugin(Plugin):
         await self.ctx.notify(f"New permanent rule [{item['id']}]: {item['text']}")
         return {"saved": True, "id": item["id"], "total_rules": len(self.rules())}
 
+    async def _semantic_scores(self, query: str) -> dict[str, float]:
+        """Similarity of the query to each memory, by meaning. Empty when not set up."""
+        if not self.embedder.enabled or not self.items:
+            return {}
+        missing = [m for m in self.items if m["id"] not in self.vectors]
+        if missing:
+            vecs = await self.embedder.embed([m["text"] for m in missing])
+            for m, v in zip(missing, vecs):
+                self.vectors[m["id"]] = v
+            self.vec_path.write_text(json.dumps({"model": self.embedder.model, "vectors": self.vectors}))
+        (qv,) = await self.embedder.embed([query])
+        return {m["id"]: cosine(qv, self.vectors[m["id"]]) for m in self.items if m["id"] in self.vectors}
+
     @tool(
-        "Search long-term memory (facts and rules) by words. Use it before you answer a "
-        "question about the user's life or preferences that is not in the prompt.",
-        params={"query": "string: words to search for", "limit": "integer: max results, default 8"},
+        "Search long-term memory (facts and rules) by meaning and by words. Use it before you "
+        "answer a question about the user's life or preferences that is not in the prompt.",
+        params={"query": "string: what you look for, in your own words", "limit": "integer: max results, default 8"},
         required=["query"],
     )
     async def recall(self, query: str, limit: int = 8):
         q = words(query)
+        try:
+            semantic = await self._semantic_scores(query)
+            mode = "meaning" if semantic else "words"
+        except Exception as e:  # noqa: BLE001
+            self.log.warning("search by meaning failed, using words: %s", e)
+            semantic, mode = {}, "words (search by meaning failed)"
+        min_sim = float(self.config.get("min_similarity", 0.45))
         scored = []
         for m in self.items:
             text = m["text"] + " " + m.get("mistake", "")
             overlap = len(q & words(text))
-            if overlap or query.lower() in text.lower():
-                scored.append((overlap, m["time"], m))
+            sim = semantic.get(m["id"], 0.0)
+            if overlap or query.lower() in text.lower() or sim >= min_sim:
+                scored.append((sim + 0.1 * overlap, m["time"], m))
         scored.sort(key=lambda s: (s[0], s[1]), reverse=True)
         hits = [
             {"id": m["id"], "kind": m["kind"], "text": m["text"], "saved": time.strftime("%Y-%m-%d", time.localtime(m["time"]))}
             for _, _, m in scored[: max(1, min(int(limit), 30))]
         ]
-        result: dict[str, Any] = {"query": query, "matches": hits}
+        result: dict[str, Any] = {"query": query, "matches": hits, "search": mode}
         if not hits:
             result["note"] = "Nothing in memory matches. Say that you do not know."
         return result
@@ -144,6 +180,7 @@ class MemoryPlugin(Plugin):
         if not item:
             return {"deleted": False, "error": f"No fact with id {id}."}
         self.items.remove(item)
+        self.vectors.pop(id, None)
         self._save()
         return {"deleted": True, "text": item["text"]}
 

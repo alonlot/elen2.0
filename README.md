@@ -223,6 +223,14 @@ How a mistake becomes a rule:
 
 Say "show my memory" to see all rules and facts on screen.
 
+**Search by meaning.** Set `[plugins.memory] embeddings = { model = "nomic-embed-text" }`
+(with Ollama: `ollama pull nomic-embed-text`; any OpenAI-compatible `/embeddings` URL works).
+Then "who is my wife?" finds "My spouse is called Dana." Without it, recall matches words.
+
+**Long chats.** The brain sees the last 40 messages in full and a running summary of all the
+messages before them, so nothing silently disappears. If the summarized part held outside
+content (mail, web), the prompt-injection guard stays on.
+
 What this can and cannot do: the code check makes repeat mistakes much less likely, and it
 always stops an action it detects as a conflict. It is still a model that judges the conflict,
 so it is not a mathematical guarantee. For a rule that must never be broken, also use a hard
