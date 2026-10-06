@@ -59,6 +59,7 @@
 }
 .elen-msg.elen.warned { border-left-color: #ffb547; }
 .elen-msg.elen.error { border-left-color: #ff4a5a; color: #ffc4ca; }
+.elen-msg.elen.live { color: rgba(215, 247, 255, 0.8); border-left-color: rgba(62, 232, 255, 0.5); }
 .elen-msg.activity { color: rgba(191, 246, 255, 0.55); font-size: 9pt; padding: 0 12px; font-family: monospace; }
 
 .elen-chat-input { spacing: 6px; padding-top: 4px; }
@@ -75,6 +76,7 @@
 }
 .elen-icon-button.small { padding: 5px; margin-left: 8px; }
 .elen-icon-button:hover { background-color: rgba(62, 232, 255, 0.22); }
+.elen-icon-button.stop { color: #ff6a78; border-color: rgba(255, 74, 90, 0.7); background-color: rgba(255, 70, 90, 0.15); }
 .elen-icon-button.active {
   color: #ff6a78; border-color: #ff4a5a;
   background-color: rgba(255, 70, 90, 0.25);

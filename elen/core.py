@@ -11,7 +11,11 @@ subscribe to events and call the public methods. Events:
   confirm          a Confirmation dict; answer with resolve_confirmation()
   confirm_closed   {"id","reason"}
   screenshot_request {"id","path"}; answer with screenshot_done()
+  delta            {"id", "text"}: a piece of the reply while the model writes it
+  delta_end        {"id"}: that streamed text was progress before a tool call, not the reply
   transcript       {"text"}
+  wake             {}: the wake word was heard
+  wake_state       {"enabled": bool}
   history_cleared  {}
   error            {"text"}
 """
@@ -129,6 +133,9 @@ class Elen:
         self.plugin_errors: dict[str, str] = {}
         self.ui_present = False
         self.state = "idle"
+        self._current: asyncio.Task | None = None
+        self._speak = False
+        self._spoke_streaming = False
         self._configure()
 
     # ----- setup -------------------------------------------------------
@@ -270,25 +277,60 @@ class Elen:
         if not text:
             return ""
         async with self._lock:
+            self._current = asyncio.current_task()
             item = self.history.add_display("user", text, source=source)
             self.history.save()
             self.emit("message", item)
             self.set_state("thinking")
+            self._speak = self._should_speak(source)
+            self.speaker.begin()
             try:
                 reply, meta = await self.run_turn(text)
+            except asyncio.CancelledError:
+                task = asyncio.current_task()
+                if task is not None and hasattr(task, "uncancel"):
+                    task.uncancel()
+                reply, meta = "Stopped. Nothing more will be done for this request.", {"stopped": True}
+                self.history.add_turn([{"role": "user", "content": text}, {"role": "assistant", "content": "(stopped by the user)"}])
             except LLMError as e:
                 reply, meta = f"I could not reach my brain model: {e}", {"error": True}
             except Exception as e:  # noqa: BLE001
                 log.exception("turn failed")
                 reply, meta = f"Something went wrong: {e}", {"error": True}
+            finally:
+                self._current = None
             item = self.history.add_display("assistant", reply, request_id=request_id, **meta)
             self.history.save()
             self.emit("message", item)
             self.set_state("idle")
-        speak_on = self.config["tts"].get("speak_on", "voice")
-        if reply and (speak_on == "always" or (speak_on == "voice" and source == "voice")):
-            self._spawn(self.speaker.say(reply))
+            if self._speak and not meta.get("stopped"):
+                if self._spoke_streaming:
+                    self.speaker.flush()
+                    if meta.get("warning"):
+                        self.speaker.feed("Warning. " + meta["warning"] + " ")
+                        self.speaker.flush()
+                else:
+                    self.speaker.feed(reply)
+                    self.speaker.flush()
         return reply
+
+    def _should_speak(self, source: str) -> bool:
+        speak_on = self.config["tts"].get("speak_on", "voice")
+        return self.speaker.enabled and (speak_on == "always" or (speak_on == "voice" and source == "voice"))
+
+    def cancel(self) -> bool:
+        """Stop the running request, speech and recording."""
+        stopped = False
+        if self._current is not None and not self._current.done():
+            self._current.cancel()
+            stopped = True
+        for conf_id in list(self._pending_confirm):
+            self.emit("confirm_closed", {"id": conf_id, "reason": "stopped"})
+        self._spawn(self.speaker.stop())
+        if self.listener.recorder.active:
+            self.listener.recorder.stop()
+            stopped = True
+        return stopped
 
     def rules(self) -> list[str]:
         memory = self.plugins.get("memory")
@@ -324,8 +366,19 @@ class Elen:
         tools = [t.schema() for t in self.tools.values()]
         max_steps = int(self.config["brain"].get("max_steps", 12))
         final = ""
+        # Speak while the model writes only when no rule check can still change the reply.
+        rules_may_rewrite = bool(self.rules()) and self.config["guard"].get("rule_check_replies", True) \
+            and self._rule_check_mode() != "off"
+        self._spoke_streaming = getattr(self, "_speak", False) and not rules_may_rewrite
         for _ in range(max_steps):
-            resp = await self.brain.chat(system, self.history.context() + turn, tools)
+            step_id = uuid.uuid4().hex[:8]
+
+            def on_text(piece: str, step_id: str = step_id) -> None:
+                self.emit("delta", {"id": step_id, "text": piece})
+                if self._spoke_streaming:
+                    self.speaker.feed(piece)
+
+            resp = await self.brain.chat(system, self.history.context() + turn, tools, on_text=on_text)
             msg: dict[str, Any] = {"role": "assistant", "content": resp.text}
             if resp.tool_calls:
                 msg["tool_calls"] = [c.to_dict() for c in resp.tool_calls]
@@ -341,14 +394,17 @@ class Elen:
                         again = await self.brain.chat(
                             system, self.history.context() + turn + [self._rule_note(conflict)], tools
                         )
+                        self.emit("delta_end", {"id": step_id})
                         if again.text:
                             turn[-1] = {"role": "assistant", "content": again.text}
                             final = again.text
                     except Exception as e:  # noqa: BLE001
                         log.warning("reply rewrite failed: %s", e)
                 break
+            self.emit("delta_end", {"id": step_id})
             if resp.text:
                 await self.add_activity("elen", resp.text)
+            self.set_state("working")
             for call in resp.tool_calls:
                 turn.append(await self.execute_tool(call, turn, executed))
         else:

@@ -7,7 +7,10 @@ A Jarvis-like personal assistant for Ubuntu 24.04 (GNOME 46, Wayland).
   restart, until you press the **half-circle CLEAR button** that hangs from the top edge of the
   chat window.
 - **Voice**: press the mic button or **Super+Shift+J**, speak, stop talking. Elen records until
-  you are silent, transcribes, and acts.
+  you are silent, transcribes, and acts. Or say the wake word (see below).
+- **Fast replies**: the answer appears word by word while the model writes it, and spoken
+  replies start at the first sentence. **Stop** (the red button in the chat, or
+  **Super+Shift+Backspace**) cancels the request, the speech and any running tool.
 - **On-screen HUD**: Elen draws Jarvis-style panels directly on your desktop (no browser tab,
   no window): today's calendar as a timeline, mail lists, an opened email, system gauges,
   tables, text, screenshots. Any plugin can show any of these.

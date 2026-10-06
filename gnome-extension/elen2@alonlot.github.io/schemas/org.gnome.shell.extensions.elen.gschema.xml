@@ -9,6 +9,10 @@
       <default><![CDATA[['<Super><Shift>j']]]></default>
       <summary>Start or stop voice input</summary>
     </key>
+    <key name="stop" type="as">
+      <default><![CDATA[['<Super><Shift>BackSpace']]]></default>
+      <summary>Stop the running request, speech and recording</summary>
+    </key>
     <key name="show-reply-toast" type="b">
       <default>true</default>
       <summary>Show replies at the bottom of the screen when the chat is closed</summary>

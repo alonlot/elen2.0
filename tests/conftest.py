@@ -13,9 +13,15 @@ class ScriptedProvider:
         self.responses = list(responses)
         self.requests = []
 
-    async def chat(self, system, messages, tools=None):
+    async def chat(self, system, messages, tools=None, on_text=None):
         self.requests.append({"system": system, "messages": messages, "tools": tools})
-        return self.responses.pop(0)
+        resp = self.responses.pop(0)
+        if on_text and resp.text:  # stream the text in two pieces, like a real model
+            half = len(resp.text) // 2
+            for piece in (resp.text[:half], resp.text[half:]):
+                if piece:
+                    on_text(piece)
+        return resp
 
 
 def call(tool_name, **args):

@@ -51,6 +51,9 @@ async def run(cmd: list[str], timeout: float = 20) -> tuple[int, str]:
     except asyncio.TimeoutError:
         proc.kill()
         return 124, "timed out"
+    except asyncio.CancelledError:  # the user pressed Stop
+        proc.kill()
+        raise
     return proc.returncode or 0, out.decode(errors="replace")
 
 

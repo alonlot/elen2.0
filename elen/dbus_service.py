@@ -53,6 +53,11 @@ class ElenInterface(ServiceInterface):
         return json.dumps(self.core.pending_confirmations(), ensure_ascii=False)
 
     @method()
+    def Stop(self) -> "b":
+        """Stop the running request, speech and recording."""
+        return self.core.cancel()
+
+    @method()
     def ToggleListening(self) -> "s":
         return self.core.toggle_listening()
 

@@ -14,6 +14,7 @@ const IFACE = `
     </method>
     <method name="PendingConfirmations"><arg type="s" direction="out"/></method>
     <method name="ToggleListening"><arg type="s" direction="out"/></method>
+    <method name="Stop"><arg type="b" direction="out"/></method>
     <method name="RegisterUI"><arg type="s" direction="out"/></method>
     <method name="ScreenshotDone">
       <arg type="s" direction="in"/><arg type="b" direction="in"/><arg type="b" direction="out"/>

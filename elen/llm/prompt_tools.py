@@ -93,9 +93,10 @@ class PromptToolsAdapter:
         self.inner = inner
         self.name = getattr(inner, "name", "prompt_tools")
 
-    async def chat(self, system, messages, tools=None) -> LLMResponse:
+    async def chat(self, system, messages, tools=None, on_text=None) -> LLMResponse:
+        # Text is not streamed with tools: a reply can turn out to be a JSON tool request.
         if not tools:
-            return await self.inner.chat(system, to_plain_messages(messages), None)
+            return await self.inner.chat(system, to_plain_messages(messages), None, on_text)
         resp = await self.inner.chat(system + INSTRUCTIONS + describe_tools(tools), to_plain_messages(messages), None)
         text, calls = parse_tool_calls(resp.text, {t["name"] for t in tools})
         return LLMResponse(text=text, tool_calls=calls, stop_reason=resp.stop_reason)

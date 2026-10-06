@@ -19,7 +19,7 @@ from typing import Any
 import httpx
 
 from ..secrets import resolve_secret
-from .base import LLMError, LLMResponse, ToolCall
+from .base import LLMError, LLMResponse, ToolCall, emit_text
 
 
 def _user_content(content: Any) -> Any:
@@ -79,24 +79,25 @@ class OpenAICompatProvider:
         self._prompt_tools = None
         self._transport = None  # tests can set an httpx transport
 
-    async def chat(self, system, messages, tools=None) -> LLMResponse:
+    async def chat(self, system, messages, tools=None, on_text=None) -> LLMResponse:
         if tools and self.tool_mode == "prompt":
             if self._prompt_tools is None:
                 from .prompt_tools import PromptToolsAdapter
 
                 self._prompt_tools = PromptToolsAdapter(_NoTools(self))
-            return await self._prompt_tools.chat(system, messages, tools)
+            return await self._prompt_tools.chat(system, messages, tools, on_text)
         try:
-            return await self._request(system, messages, tools)
+            return await self._request(system, messages, tools, on_text)
         except LLMError as e:
             text = str(e).lower()
             if tools and self.tool_mode == "auto" and " 4" in text[:30] and "tool" in text:
                 # The server or model does not support native tools: use prompt tools from now on.
                 self.tool_mode = "prompt"
-                return await self.chat(system, messages, tools)
+                return await self.chat(system, messages, tools, on_text)
             raise
 
-    async def _request(self, system, messages, tools=None) -> LLMResponse:
+    async def _request(self, system, messages, tools=None, on_text=None) -> LLMResponse:
+        stream = on_text is not None and self.cfg.get("stream", True)
         body: dict[str, Any] = {
             "model": self.model,
             "messages": to_openai_messages(system, messages),
@@ -120,6 +121,9 @@ class OpenAICompatProvider:
             headers["Authorization"] = f"Bearer {self.api_key}"
         for k, v in (self.cfg.get("headers") or {}).items():
             headers[str(k)] = resolve_secret(str(v))
+        if stream:
+            body["stream"] = True
+            return await self._stream(body, headers, on_text)
         try:
             async with httpx.AsyncClient(
                 timeout=float(self.cfg.get("timeout") or 300), transport=self._transport
@@ -147,6 +151,58 @@ class OpenAICompatProvider:
         )
 
 
+    async def _stream(self, body, headers, on_text) -> LLMResponse:
+        """Server-sent events: text pieces go to on_text, tool calls are put together."""
+        text_parts: list[str] = []
+        calls: dict[int, dict[str, str]] = {}
+        finish = ""
+        try:
+            async with httpx.AsyncClient(
+                timeout=float(self.cfg.get("timeout") or 300), transport=self._transport
+            ) as client:
+                async with client.stream(
+                    "POST", f"{self.base_url}/chat/completions", json=body, headers=headers
+                ) as r:
+                    if r.status_code >= 400:
+                        err = (await r.aread()).decode(errors="replace")
+                        raise LLMError(f"Model API error {r.status_code}: {err[:500]}")
+                    async for line in r.aiter_lines():
+                        line = line.strip()
+                        if not line.startswith("data:"):
+                            continue
+                        data = line[5:].strip()
+                        if data == "[DONE]":
+                            break
+                        try:
+                            event = json.loads(data)
+                        except ValueError:
+                            continue
+                        choice = (event.get("choices") or [{}])[0]
+                        delta = choice.get("delta") or {}
+                        if delta.get("content"):
+                            text_parts.append(delta["content"])
+                            await emit_text(on_text, delta["content"])
+                        for tc in delta.get("tool_calls") or []:
+                            cur = calls.setdefault(int(tc.get("index", 0)), {"id": "", "name": "", "args": ""})
+                            fn = tc.get("function") or {}
+                            cur["id"] = tc.get("id") or cur["id"]
+                            if fn.get("name"):
+                                cur["name"] = fn["name"] if not cur["name"] else cur["name"] + fn["name"]
+                            cur["args"] += fn.get("arguments") or ""
+                        finish = choice.get("finish_reason") or finish
+        except httpx.HTTPError as e:
+            raise LLMError(f"Cannot reach {self.base_url}: {e}") from e
+        tool_calls = []
+        for i in sorted(calls):
+            c = calls[i]
+            try:
+                args = json.loads(c["args"] or "{}")
+            except json.JSONDecodeError:
+                args = {}
+            tool_calls.append(ToolCall(c["id"] or f"call_{i}", c["name"], args if isinstance(args, dict) else {}))
+        return LLMResponse(text="".join(text_parts).strip(), tool_calls=tool_calls, stop_reason=finish)
+
+
 class _NoTools:
     """Calls the server without the tools field (used by prompt tools)."""
 
@@ -154,5 +210,5 @@ class _NoTools:
         self.provider = provider
         self.name = provider.name
 
-    async def chat(self, system, messages, tools=None) -> LLMResponse:
-        return await self.provider._request(system, messages, None)
+    async def chat(self, system, messages, tools=None, on_text=None) -> LLMResponse:
+        return await self.provider._request(system, messages, None, on_text)

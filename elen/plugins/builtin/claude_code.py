@@ -142,6 +142,9 @@ class ClaudeCodePlugin(Plugin):
         except asyncio.TimeoutError:
             proc.kill()
             return {"ok": False, "error": "Claude Code timed out and was stopped.", "steps": steps[-30:]}
+        except asyncio.CancelledError:  # the user pressed Stop
+            proc.kill()
+            raise
 
         if not result:
             err = (await proc.stderr.read()).decode(errors="replace")

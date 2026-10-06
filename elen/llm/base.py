@@ -16,8 +16,9 @@ Images for vision calls are user content parts:
 
 from __future__ import annotations
 
+import inspect
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import Any, Callable, Protocol
 
 
 @dataclass
@@ -42,6 +43,18 @@ class LLMError(RuntimeError):
     pass
 
 
+TextCallback = Callable[[str], Any]
+
+
+async def emit_text(on_text: TextCallback | None, text: str) -> None:
+    """Call a streaming callback, sync or async."""
+    if on_text is None or not text:
+        return
+    result = on_text(text)
+    if inspect.isawaitable(result):
+        await result
+
+
 class LLMProvider(Protocol):
     name: str
 
@@ -50,4 +63,7 @@ class LLMProvider(Protocol):
         system: str,
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None = None,
-    ) -> LLMResponse: ...
+        on_text: TextCallback | None = None,
+    ) -> LLMResponse:
+        """One model call. With on_text, reply text is passed on piece by piece as it arrives."""
+        ...

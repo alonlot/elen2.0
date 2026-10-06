@@ -31,11 +31,14 @@ export default class ElenExtension extends Extension {
             () => this._indicator.menu.toggle());
         Main.wm.addKeybinding('push-to-talk', this._settings, Meta.KeyBindingFlags.NONE, modes,
             () => this._indicator.toggleListening());
+        Main.wm.addKeybinding('stop', this._settings, Meta.KeyBindingFlags.NONE, modes,
+            () => this._indicator.stop());
     }
 
     disable() {
         Main.wm.removeKeybinding('toggle-chat');
         Main.wm.removeKeybinding('push-to-talk');
+        Main.wm.removeKeybinding('stop');
         this._confirm?.destroy();
         this._confirm = null;
         this._hud?.destroy();
@@ -78,6 +81,12 @@ export default class ElenExtension extends Extension {
             break;
         case 'tool':
             this._indicator.setToolStatus(data);
+            break;
+        case 'delta':
+            this._indicator.addDelta(data.id, data.text ?? '');
+            break;
+        case 'delta_end':
+            this._indicator.endDelta();
             break;
         case 'visual':
             this._hud.show(data);

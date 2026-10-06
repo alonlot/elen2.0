@@ -8,7 +8,7 @@ from typing import Any
 import anthropic
 
 from ..secrets import resolve_secret
-from .base import LLMError, LLMResponse, ToolCall
+from .base import LLMError, LLMResponse, ToolCall, emit_text
 
 FALLBACK_BETA = "server-side-fallback-2026-07-01"
 
@@ -107,7 +107,7 @@ class AnthropicProvider:
             kwargs["base_url"] = cfg["base_url"]
         self.client = anthropic.AsyncAnthropic(**kwargs)
 
-    async def chat(self, system, messages, tools=None) -> LLMResponse:
+    async def chat(self, system, messages, tools=None, on_text=None) -> LLMResponse:
         params: dict[str, Any] = {
             "model": self.model,
             "max_tokens": int(self.cfg.get("max_tokens") or 8000),
@@ -131,7 +131,17 @@ class AnthropicProvider:
             extra_body["fallbacks"] = "default"
             betas.append(FALLBACK_BETA)
         try:
-            if betas:
+            if on_text is not None:
+                # Stream: text pieces go to on_text; the final message is put together by the SDK.
+                if betas:
+                    manager = self.client.beta.messages.stream(**params, betas=betas, extra_body=extra_body or None)
+                else:
+                    manager = self.client.messages.stream(**params, extra_body=extra_body or None)
+                async with manager as stream:
+                    async for text in stream.text_stream:
+                        await emit_text(on_text, text)
+                    resp = await stream.get_final_message()
+            elif betas:
                 resp = await self.client.beta.messages.create(
                     **params, betas=betas, extra_body=extra_body or None
                 )

@@ -36,6 +36,7 @@ class ElenIndicator extends PanelMenu.Button {
         this._openPrefs = openPrefs;
         this._ids = new Set();
         this._state = 'offline';
+        this._live = null;
 
         const box = new St.BoxLayout({style_class: 'elen-panel-box'});
         this._orb = new Orb(18, 'offline');
@@ -112,13 +113,22 @@ class ElenIndicator extends PanelMenu.Button {
         this._mic.connect('clicked', () => this.toggleListening());
         input.add_child(this._mic);
 
-        const send = new St.Button({
+        this._sendButton = new St.Button({
             style_class: 'elen-icon-button',
             can_focus: true,
             child: new St.Icon({icon_name: 'go-up-symbolic', icon_size: 16}),
         });
-        send.connect('clicked', () => this._send());
-        input.add_child(send);
+        this._sendButton.connect('clicked', () => this._send());
+        input.add_child(this._sendButton);
+
+        this._stopButton = new St.Button({
+            style_class: 'elen-icon-button stop',
+            can_focus: true,
+            visible: false,
+            child: new St.Icon({icon_name: 'media-playback-stop-symbolic', icon_size: 16}),
+        });
+        this._stopButton.connect('clicked', () => this.stop());
+        input.add_child(this._stopButton);
         root.add_child(input);
 
         item.add_child(root);
@@ -135,6 +145,7 @@ class ElenIndicator extends PanelMenu.Button {
 
     reloadHistory() {
         this._client.call('GetHistory').then(json => {
+            this._live = null;
             this._messages.destroy_all_children();
             this._ids.clear();
             for (const m of JSON.parse(json))
@@ -150,7 +161,32 @@ class ElenIndicator extends PanelMenu.Button {
         }
     }
 
+    // A piece of the reply while the model writes it.
+    addDelta(id, text) {
+        if (!this._live || this._live.id !== id) {
+            this.endDelta();
+            const [row, label] = this._addLabel('', 'elen-msg elen live');
+            this._live = {id, row, label, text: ''};
+        }
+        this._live.text += text;
+        this._live.label.text = plain(this._live.text);
+        this._scrollToEnd();
+    }
+
+    endDelta() {
+        if (this._live) {
+            this._live.row.destroy();
+            this._live = null;
+        }
+    }
+
+    stop() {
+        this._client.call('Stop').catch(() => {});
+    }
+
     addMessage(m, scroll = true) {
+        if (m.role === 'assistant')
+            this.endDelta();
         if (m.id && this._ids.has(m.id))
             return;
         if (m.id)
@@ -176,6 +212,7 @@ class ElenIndicator extends PanelMenu.Button {
         label.x_expand = true;
         row.add_child(label);
         this._messages.add_child(row);
+        return [row, label];
     }
 
     _scrollToEnd() {
@@ -199,6 +236,7 @@ class ElenIndicator extends PanelMenu.Button {
 
     _clear() {
         this._client.call('ClearHistory').catch(() => {});
+        this._live = null;
         this._messages.destroy_all_children();
         this._ids.clear();
     }
@@ -217,6 +255,9 @@ class ElenIndicator extends PanelMenu.Button {
             this._mic.add_style_class_name('active');
         else
             this._mic.remove_style_class_name('active');
+        const busy = !['idle', 'offline'].includes(state);
+        this._stopButton.visible = busy;
+        this._sendButton.visible = !busy;
     }
 
     setToolStatus(ev) {
@@ -230,6 +271,7 @@ class ElenIndicator extends PanelMenu.Button {
     }
 
     clearView() {
+        this._live = null;
         this._messages.destroy_all_children();
         this._ids.clear();
     }
