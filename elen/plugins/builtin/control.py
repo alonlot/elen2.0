@@ -60,15 +60,36 @@ STEPS_SCHEMA = {
 }
 
 
+THINK_RE = re.compile(r"<think>.*?</think>", re.S | re.I)
+BOX_RE = re.compile(r"<\|begin_of_box\|>(.*?)<\|end_of_box\|>", re.S)
+LIST_RE = re.compile(r"\[\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*(?:,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*)?\]")
+
+
+def _answer_data(text: str) -> dict[str, Any] | None:
+    """The JSON object in the answer, or a bare box / point list (GLM-V style [x1,y1,x2,y2])."""
+    text = THINK_RE.sub("", text or "")
+    boxed = BOX_RE.search(text)
+    if boxed:
+        text = boxed.group(1)
+    for match in reversed(list(re.finditer(r"\{[^{}]*\}", text))):
+        try:
+            data = json.loads(match.group(0))
+        except ValueError:
+            continue
+        if isinstance(data, dict):
+            return data
+    nums = LIST_RE.search(text)
+    if nums:
+        values = [float(v) for v in nums.groups() if v is not None]
+        return {"bbox": values} if len(values) == 4 else {"point": values}
+    return None
+
+
 def parse_location(text: str, units: str, size: tuple[int, int]) -> dict[str, Any]:
     """Read the vision model's answer. Returns {"found", "x", "y", "label"} in pixels."""
-    match = re.search(r"\{.*\}", text or "", re.S)
-    if not match:
-        return {"found": False, "reason": f"The vision model gave no position: {text[:200]!r}"}
-    try:
-        data = json.loads(match.group(0))
-    except ValueError:
-        return {"found": False, "reason": f"The vision model gave no valid JSON: {text[:200]!r}"}
+    data = _answer_data(text)
+    if data is None:
+        return {"found": False, "reason": f"The vision model gave no position: {(text or '')[:200]!r}"}
     if not data.get("found", True):
         return {"found": False, "reason": str(data.get("reason") or "not visible")}
     try:

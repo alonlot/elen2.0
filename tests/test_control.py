@@ -34,6 +34,14 @@ def test_parse_location_units():
     assert (got["x"], got["y"]) == (150, 200)
 
 
+def test_parse_location_glm_and_thinking_output():
+    size = (2000, 1000)
+    got = parse_location("Send is here <|begin_of_box|>[400,100,600,300]<|end_of_box|>", "normalized", size)
+    assert (got["x"], got["y"]) == (1000, 200)
+    got = parse_location('<think>maybe {x} near the top</think>{"x": 100, "y": 50}', "pixels", size)
+    assert (got["x"], got["y"]) == (100, 50)
+
+
 def test_parse_location_refuses_guesses():
     size = (100, 100)
     assert not parse_location('{"found": false, "reason": "no button"}', "pixels", size)["found"]
