@@ -143,8 +143,12 @@ class ContactsPlugin(Plugin):
         def q(s: str) -> str:
             return '"' + str(s).replace("\\", "\\\\").replace('"', '\\"') + '"'
 
-        emails = [e for e in (emails or []) if e] if isinstance(emails, list) else [str(emails)]
-        phones = [p for p in (phones or []) if p] if isinstance(phones, list) else [str(phones)]
+        if emails is None:
+            emails = []
+        emails = [e for e in emails if e] if isinstance(emails, list) else [str(emails)]
+        if phones is None:
+            phones = []
+        phones = [p for p in phones if p] if isinstance(phones, list) else [str(phones)]
         block = (
             f"\n[[contact]]\nname = {q(name)}\n"
             f"emails = [{', '.join(q(e) for e in emails)}]\n"

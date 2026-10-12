@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import re
+from .config import tomllib
 from pathlib import Path
 from typing import Any
 
@@ -58,7 +59,9 @@ def set_values(section: str, values: dict[str, Any], path: Path | None = None) -
     path = path or ensure_user_config()
     lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
     header = f"[{section}]"
-    start = next((i for i, line in enumerate(lines) if line.strip() == header), None)
+    # A header can have a comment after it: "[brain]  # main model".
+    header_re = re.compile(r"\s*" + re.escape(header) + r"\s*(#.*)?$")
+    start = next((i for i, line in enumerate(lines) if header_re.match(line)), None)
     if start is None:
         lines += ["", header] + [f"{k} = {toml_value(v)}" for k, v in values.items()]
     else:
@@ -80,7 +83,9 @@ def set_values(section: str, values: dict[str, Any], path: Path | None = None) -
             while insert_at > start + 1 and not lines[insert_at - 1].strip():
                 insert_at -= 1
             lines[insert_at:insert_at] = [f"{k} = {toml_value(v)}" for k, v in missing.items()]
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    text = "\n".join(lines) + "\n"
+    tomllib.loads(text)  # do not write a file that is not valid TOML
+    path.write_text(text, encoding="utf-8")
     path.chmod(0o600)
     load_config(path)  # raises if the result is not valid TOML
     return path

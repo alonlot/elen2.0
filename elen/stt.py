@@ -77,9 +77,14 @@ class Recorder:
     async def record(self, out: Path) -> Path:
         self._stop = asyncio.Event()
         self.active = True
-        proc = await asyncio.create_subprocess_exec(
-            *self.command(), stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL
-        )
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *self.command(), stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL
+            )
+        except BaseException:
+            # If the recorder does not start, voice input must be able to start again.
+            self.active = False
+            raise
         frames = bytearray()
         threshold = float(self.cfg.get("silence_threshold", 600))
         silence_needed = float(self.cfg.get("silence_seconds", 1.5))
