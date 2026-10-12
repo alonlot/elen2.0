@@ -7,11 +7,10 @@ from __future__ import annotations
 
 import json
 import re
-from .config import tomllib
 from pathlib import Path
 from typing import Any
 
-from .config import config_path, ensure_user_config, load_config
+from .config import config_path, ensure_user_config, load_config, tomllib
 
 LLM_KEYS = ("provider", "model", "base_url", "api_key", "tool_mode", "effort")
 MODEL_SECTIONS = {
