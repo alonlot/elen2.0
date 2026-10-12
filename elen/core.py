@@ -11,6 +11,8 @@ subscribe to events and call the public methods. Events:
   confirm          a Confirmation dict; answer with resolve_confirmation()
   confirm_closed   {"id","reason"}
   screenshot_request {"id","path"}; answer with screenshot_done()
+  input_request    {"id","actions"}: mouse and keyboard input; answer with input_done()
+  input_cancel     {"id"}: stop that input (the user pressed Stop)
   delta            {"id", "text"}: a piece of the reply while the model writes it
   delta_end        {"id"}: that streamed text was progress before a tool call, not the reply
   transcript       {"text"}
@@ -143,6 +145,18 @@ class PermissionsPlugin(Plugin):
         return {"removed": self.ctx.core.allow_rules.remove(id)}
 
 
+def png_size(path: Path) -> tuple[int, int] | None:
+    """Width and height from a PNG header, without an image library."""
+    try:
+        with open(path, "rb") as f:
+            head = f.read(24)
+    except OSError:
+        return None
+    if len(head) < 24 or head[:8] != b"\x89PNG\r\n\x1a\n":
+        return None
+    return int.from_bytes(head[16:20], "big"), int.from_bytes(head[20:24], "big")
+
+
 class Elen:
     def __init__(self, config: dict[str, Any] | None = None):
         self.config = config or load_config()
@@ -151,6 +165,8 @@ class Elen:
         self._listeners: list[Listener_t] = []
         self._pending_confirm: dict[str, tuple[Confirmation, asyncio.Future]] = {}
         self._pending_shots: dict[str, asyncio.Future] = {}
+        self._pending_input: dict[str, asyncio.Future] = {}
+        self.last_screen_size: tuple[int, int] | None = None
         self._lock = asyncio.Lock()
         self._tasks: set[asyncio.Task] = set()
         self.plugins: dict[str, Plugin] = {}
@@ -887,6 +903,7 @@ class Elen:
             try:
                 ok = await asyncio.wait_for(fut, 6)
                 if ok and path.exists():
+                    self.last_screen_size = png_size(path)
                     return path
             except asyncio.TimeoutError:
                 log.warning("GNOME extension did not answer the screenshot request")
@@ -905,6 +922,7 @@ class Elen:
             )
             await proc.wait()
             if proc.returncode == 0 and path.exists():
+                self.last_screen_size = png_size(path)
                 return path
         raise RuntimeError(
             "Could not take a screenshot. Enable the Elen GNOME extension, or install gnome-screenshot."
@@ -914,6 +932,36 @@ class Elen:
         fut = self._pending_shots.get(sid)
         if fut and not fut.done():
             fut.set_result(ok)
+
+    async def send_input(self, actions: list[dict[str, Any]], timeout: float = 10) -> None:
+        """Ask the GNOME extension to move the mouse, click and type.
+
+        Positions are fractions of the screen (fx, fy from 0 to 1), so they do not depend on
+        the screenshot resolution or the display scale. Raises RuntimeError on failure.
+        """
+        if not self.ui_present:
+            raise RuntimeError("The Elen GNOME extension is not connected.")
+        iid = uuid.uuid4().hex[:12]
+        fut: asyncio.Future = asyncio.get_running_loop().create_future()
+        self._pending_input[iid] = fut
+        self.emit("input_request", {"id": iid, "actions": actions})
+        try:
+            ok, error = await asyncio.wait_for(fut, timeout)
+        except asyncio.TimeoutError:
+            self.emit("input_cancel", {"id": iid})
+            raise RuntimeError("The GNOME extension did not finish the input in time.") from None
+        except asyncio.CancelledError:  # the user pressed Stop
+            self.emit("input_cancel", {"id": iid})
+            raise
+        finally:
+            self._pending_input.pop(iid, None)
+        if not ok:
+            raise RuntimeError(error or "The GNOME extension could not do the input.")
+
+    def input_done(self, iid: str, ok: bool, error: str = "") -> None:
+        fut = self._pending_input.get(iid)
+        if fut and not fut.done():
+            fut.set_result((ok, error))
 
     # ----- voice -------------------------------------------------------
     def toggle_listening(self) -> str:

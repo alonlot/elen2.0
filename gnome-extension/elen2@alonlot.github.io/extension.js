@@ -1,5 +1,5 @@
 // Elen 2.0 GNOME Shell extension: panel orb + chat, HUD visuals, approvals,
-// screenshots and keyboard shortcuts. The brain runs in the Elen daemon.
+// screenshots, screen control (mouse and keyboard) and keyboard shortcuts. The brain runs in the Elen daemon.
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
@@ -12,6 +12,7 @@ import {ElenIndicator} from './chat.js';
 import {ConfirmManager} from './confirm.js';
 import {ElenClient} from './dbus.js';
 import {Hud} from './hud.js';
+import {InputController} from './input.js';
 
 Gio._promisify(Shell.Screenshot.prototype, 'screenshot', 'screenshot_finish');
 
@@ -19,6 +20,15 @@ export default class ElenExtension extends Extension {
     enable() {
         this._settings = this.getSettings();
         this._hud = new Hud();
+        // Elen must not answer her own approval dialogs, and must not type into her own
+        // chat (text there counts as typed by the user).
+        this._input = new InputController(() => {
+            if (this._confirm?.busy)
+                return 'An approval dialog is open. Answer it first.';
+            if (this._indicator?.menu.isOpen)
+                return "Elen's chat is open. Input into Elen's own chat is not allowed.";
+            return '';
+        });
         this._client = new ElenClient(
             (kind, data) => this._onEvent(kind, data),
             connected => this._onConnection(connected));
@@ -43,6 +53,8 @@ export default class ElenExtension extends Extension {
         this._confirm = null;
         this._hud?.destroy();
         this._hud = null;
+        this._input?.destroy();
+        this._input = null;
         this._indicator?.destroy();
         this._indicator = null;
         this._client?.destroy();
@@ -105,6 +117,12 @@ export default class ElenExtension extends Extension {
         case 'screenshot_request':
             this._takeScreenshot(data);
             break;
+        case 'input_request':
+            this._doInput(data);
+            break;
+        case 'input_cancel':
+            this._input?.cancel(data.id);
+            break;
         case 'wake':
             if (!this._indicator.menu.isOpen)
                 this._hud.toast('Listening…');
@@ -122,6 +140,36 @@ export default class ElenExtension extends Extension {
             Main.notify('Elen 2.0', data.text ?? 'Error');
             break;
         }
+    }
+
+    async _doInput({id, actions}) {
+        let ok = false;
+        let error = '';
+        try {
+            const wait = ms => new Promise(resolve => GLib.timeout_add(GLib.PRIORITY_DEFAULT, ms, () => {
+                resolve();
+                return GLib.SOURCE_REMOVE;
+            }));
+            // Never click or type while an approval dialog is open: Elen must not approve
+            // her own actions. The dialog of this action can still be closing, so wait a moment.
+            for (let i = 0; i < 15 && this._confirm?.busy; i++)
+                // eslint-disable-next-line no-await-in-loop
+                await wait(100);
+            if (this._confirm?.busy)
+                throw new Error('An approval dialog is open. Answer it first.');
+            // Move Elen's own UI out of the way, so the input reaches the apps.
+            if (this._indicator?.menu.isOpen) {
+                this._indicator.menu.close();
+                await wait(200);
+            }
+            this._hud?.hide(true);
+            await this._input.run(id, actions ?? []);
+            ok = true;
+        } catch (e) {
+            error = String(e?.message ?? e);
+            console.error(`Elen: input failed: ${error}`);
+        }
+        this._client?.call('InputDone', [id, ok, error]).catch(() => {});
     }
 
     async _takeScreenshot({id, path}) {

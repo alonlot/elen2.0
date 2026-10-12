@@ -117,6 +117,7 @@ DEFAULTS: dict[str, Any] = {
         "paths": [],
         "system": {"enabled": True},
         "screen": {"enabled": True},
+        "control": {"enabled": True, "coordinates": "normalized", "type_delay_ms": 8},
         "memory": {
             "enabled": True,
             "max_facts_in_prompt": 60,

@@ -16,6 +16,8 @@ A Jarvis-like personal assistant for Ubuntu 24.04 (GNOME 46, Wayland).
   tables, text, screenshots. Any plugin can show any of these.
 - **Screen vision**: Elen can take a screenshot and ask the vision model about it when it
   decides that helps ("what is this error?").
+- **Screen control**: Elen can click, type, press keys and scroll on your screen ("click
+  Send", "type my address in this field"). Each action asks for your OK first. See below.
 - **The brain is any LLM**, called through its normal API. The default provider speaks the
   OpenAI chat API, which almost every server uses: Ollama, LM Studio, vLLM, LiteLLM, OpenAI,
   OpenRouter, Groq, Gemini, Mistral, DeepSeek. The Claude API is also a provider. Models without
@@ -26,7 +28,7 @@ A Jarvis-like personal assistant for Ubuntu 24.04 (GNOME 46, Wayland).
   a free-text model name and a custom URL. Change them in the settings window (gear button in
   the chat, with presets) or with `elen set brain.model llama3.1:70b`.
 - **Plugins** give Elen tools: mail (any IMAP/SMTP server), calendar (CalDAV / ICS), contacts,
-  memory, desktop control, and full PC control through `claude -p`. Adding your own plugin is
+  memory, desktop basics, screen control (mouse and keyboard), and full PC control through `claude -p`. Adding your own plugin is
   one Python file. See [docs/PLUGINS.md](docs/PLUGINS.md).
 - **Memory and permanent rules.** Elen saves facts about you and recalls them later. When you
   correct a mistake ("never do that again"), Elen saves a permanent rule and checks every later
@@ -256,6 +258,45 @@ settings, multi-step shell work.
 Claude Code has its own model and URL settings (`model`, `base_url`), separate from the brain.
 Use this plugin only if you understand that an approved task has full access to your user
 account.
+
+## Screen control: mouse and keyboard
+
+`[plugins.control]` is on by default. Elen can use your mouse and keyboard:
+
+| Tool | What it does | Approval |
+|------|--------------|----------|
+| `control__find_on_screen` | takes a screenshot; the vision model finds an element and gives its position | no |
+| `control__click` | left, right or double click at a position, or on a described target | yes |
+| `control__type_text` | types text into the focused field (you can edit the text in the dialog) | yes |
+| `control__press_keys` | `ctrl+s`, `Return`, `alt+tab`, `ctrl+a Delete` | yes |
+| `control__do_steps` | several actions in a row (click, type, keys, scroll, wait) with **one** approval | yes |
+| `control__scroll`, `control__move_mouse` | wheel and pointer | logged; asks after screen content was read |
+
+How it works: the GNOME extension makes a virtual mouse and keyboard (Clutter), so it works on
+Wayland, with no `ydotool`, no root rights and no extra package. A ring flashes where Elen
+clicks. The extension does no input while an approval dialog is open, so Elen cannot approve
+her own actions. **Stop** cancels typing in the middle of the text.
+
+Where to click comes from the **vision model**, and this is the weak part. General chat models
+are often bad at exact positions on a screen. Use a model that is trained to point at screen
+elements, for example `qwen2.5vl` (Ollama), Claude or Gemini, in `[vision]`. Set the number
+format the model uses:
+
+```toml
+[plugins.control]
+coordinates = "normalized"   # x, y from 0 to 1000 (Gemini, many Qwen builds). "pixels" for Claude.
+type_delay_ms = 8            # pause between typed characters
+```
+
+Elen is told to look at the screen after an action before she says it worked. Screen content is
+outside content: after Elen reads the screen, every action asks for approval (the
+prompt-injection guard), also scroll and mouse moves. "Don't ask again" is narrow: a click on the
+same target name, the same exact text, or the same keys.
+
+Limits: input needs the Elen GNOME extension (not available in `elen chat` in a terminal).
+Typing uses your current keyboard layout; characters that the layout does not have are added
+for the moment by GNOME and can fail in some apps. Apps that run as root, the lock screen and
+some games do not take virtual input.
 
 ## Visuals
 

@@ -298,3 +298,10 @@
 .elen-remember-label { color: #bff6ff; font-size: 9.5pt; }
 .elen-approve { color: #3ee8ff; }
 .elen-approve-danger { color: #ff4a5a; font-weight: bold; }
+
+/* Where Elen clicked (screen control) */
+.elen-click-ring {
+  border: 3px solid rgba(62, 232, 255, 0.95);
+  border-radius: 20px;
+  box-shadow: 0 0 12px rgba(62, 232, 255, 0.6);
+}

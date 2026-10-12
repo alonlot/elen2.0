@@ -178,6 +178,10 @@ class PluginContext:
         """Capture the screen and return the PNG path."""
         return await self.core.capture_screen()
 
+    async def send_input(self, actions: list[dict[str, Any]], timeout: float = 10) -> None:
+        """Mouse and keyboard input through the GNOME extension (see plugins/builtin/control.py)."""
+        await self.core.send_input(actions, timeout)
+
     async def look(self, image: Path, question: str) -> str:
         """Ask the vision model about an image."""
         return await self.core.vision.describe(image, question)

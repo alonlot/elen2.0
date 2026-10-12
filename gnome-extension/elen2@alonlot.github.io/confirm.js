@@ -182,6 +182,11 @@ export class ConfirmManager {
         this._currentId = null;
     }
 
+    // True while an approval dialog is open or waiting.
+    get busy() {
+        return !!this._dialog || this._queue.length > 0;
+    }
+
     add(conf) {
         if (this._currentId === conf.id || this._queue.some(c => c.id === conf.id))
             return;

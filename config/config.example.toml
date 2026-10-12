@@ -33,6 +33,13 @@ workdir = "~"
 timeout = 900
 extra_args = []
 
+[plugins.control]
+# Screen control: click, type, press keys, scroll (through the GNOME extension).
+# Each click, text and key press asks for your approval first.
+enabled = true
+coordinates = "normalized"  # how the [vision] model gives positions: "normalized" (0-1000) or "pixels"
+type_delay_ms = 8           # pause between typed characters
+
 # Your own plugins: [plugins.<name>] with any settings they need.
 # [plugins.weather]
 # city = "Tel Aviv"

@@ -21,6 +21,10 @@ const IFACE = `
     <method name="ScreenshotDone">
       <arg type="s" direction="in"/><arg type="b" direction="in"/><arg type="b" direction="out"/>
     </method>
+    <method name="InputDone">
+      <arg type="s" direction="in"/><arg type="b" direction="in"/><arg type="s" direction="in"/>
+      <arg type="b" direction="out"/>
+    </method>
     <method name="GetStatus"><arg type="s" direction="out"/></method>
     <method name="Reload"><arg type="s" direction="out"/></method>
     <method name="GetModels"><arg type="s" direction="out"/></method>

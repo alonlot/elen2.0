@@ -83,6 +83,11 @@ class ElenInterface(ServiceInterface):
         return True
 
     @method()
+    def InputDone(self, input_id: "s", ok: "b", error: "s") -> "b":
+        self.core.input_done(input_id, ok, error)
+        return True
+
+    @method()
     def GetStatus(self) -> "s":
         return json.dumps(self.core.status())
 
