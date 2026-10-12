@@ -103,6 +103,22 @@ class ElenIndicator extends PanelMenu.Button {
         this._scroll.set_child(this._messages);
         root.add_child(this._scroll);
 
+        // Stay at the bottom while it is pinned there. Scroll only after the
+        // layout changes the size, because the old size gives the wrong end.
+        this._pinned = true;
+        const adj = this._vadjustment();
+        if (adj) {
+            const follow = () => {
+                if (this._pinned)
+                    adj.value = adj.upper - adj.page_size;
+            };
+            adj.connect('notify::upper', follow);
+            adj.connect('notify::page-size', follow);
+            adj.connect('notify::value', () => {
+                this._pinned = adj.value >= adj.upper - adj.page_size - 2;
+            });
+        }
+
         const input = new St.BoxLayout({style_class: 'elen-chat-input'});
         this._entry = new St.Entry({
             hint_text: 'Ask Elen…',
@@ -153,11 +169,17 @@ class ElenIndicator extends PanelMenu.Button {
 
     reloadHistory() {
         this._client.call('GetHistory').then(json => {
+            // Keep a reply that is still streaming: the history does not hold it yet.
+            const live = this._live;
             this._live = null;
             this._messages.destroy_all_children();
             this._ids.clear();
             for (const m of JSON.parse(json))
                 this.addMessage(m, false);
+            if (live) {
+                const [row, label] = this._addLabel(plain(live.text), 'elen-msg elen live');
+                this._live = {id: live.id, row, label, text: live.text};
+            }
             this._scrollToEnd();
         }).catch(() => this._showOffline());
     }
@@ -177,8 +199,9 @@ class ElenIndicator extends PanelMenu.Button {
             this._live = {id, row, label, text: ''};
         }
         this._live.text += text;
+        // The pinned scroll follows the growing text. Do not force it, so the
+        // user can scroll up and read while Elen writes.
         this._live.label.text = plain(this._live.text);
-        this._scrollToEnd();
     }
 
     endDelta() {
@@ -258,22 +281,29 @@ class ElenIndicator extends PanelMenu.Button {
         label.clutter_text.line_wrap = true;
         label.clutter_text.line_wrap_mode = Pango.WrapMode.WORD_CHAR;
         label.clutter_text.ellipsize = Pango.EllipsizeMode.NONE;
-        const align = styleClass.includes('user') ? Clutter.ActorAlign.END : Clutter.ActorAlign.START;
+        // The label does not expand. The row then gives it its natural width
+        // (max-width from the CSS), and the height comes from that same width.
+        // An expanded label got its height for the full row width but was
+        // drawn narrower, so long messages were cut off and the scroll range
+        // did not agree with the text.
         const row = new St.BoxLayout({x_expand: true});
-        label.x_align = align;
-        label.x_expand = true;
+        if (styleClass.includes('user'))
+            row.add_child(new St.Widget({x_expand: true}));
         row.add_child(label);
         this._messages.add_child(row);
         return [row, label];
     }
 
+    // GNOME 46+ has vadjustment; GNOME 45 has it on the scroll bar.
+    _vadjustment() {
+        return this._scroll.vadjustment ?? this._scroll.vscroll?.adjustment ?? null;
+    }
+
     _scrollToEnd() {
-        GLib.timeout_add(GLib.PRIORITY_DEFAULT, 60, () => {
-            const adj = this._scroll.vadjustment ?? this._scroll.get_vscroll_bar?.()?.get_adjustment();
-            if (adj)
-                adj.value = adj.upper - adj.page_size;
-            return GLib.SOURCE_REMOVE;
-        });
+        this._pinned = true;
+        const adj = this._vadjustment();
+        if (adj)
+            adj.value = adj.upper - adj.page_size;
     }
 
     _send() {
