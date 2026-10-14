@@ -45,6 +45,7 @@ from .stt import Listener, has_speech, write_wav
 from .tts import Speaker
 from .vision import Vision
 from .visuals import VISUAL_TOOL_SCHEMA, normalise
+from .wakematch import WakeMatcher
 
 log = logging.getLogger("elen.core")
 
@@ -945,6 +946,8 @@ class Elen:
             if self.wake is not None and self.wake.enabled:
                 self.wake.resume()
         self.set_state("idle")
+        # "Helen, open my calendar." -> "Open my calendar." (the name was a call to Elen)
+        text = WakeMatcher(self.config["wake"]).strip(text or "").strip()
         self.emit("transcript", {"text": text})
         if text and self.config["stt"].get("auto_send", True):
             self.submit(text, source="voice")  # do not wait: the wake word works during the reply

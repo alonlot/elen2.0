@@ -62,6 +62,22 @@ async def test_wake_runs_the_voice_flow_with_same_breath_audio(make_core, tmp_pa
     assert core.history.display[-1]["text"] == "It is noon."
 
 
+async def test_voice_transcript_drops_the_wake_name(make_core):
+    core = await make_core([say("It is noon.")])
+
+    class FakeTranscriber:
+        async def transcribe(self, wav):
+            return "Helen, what time is it?"
+
+    core.listener.transcriber = FakeTranscriber()
+    await core._listen_flow(audio=loud(1))
+    for _ in range(100):
+        if any(m["role"] == "assistant" for m in core.history.display):
+            break
+        await asyncio.sleep(0.05)
+    assert core.history.display[0]["text"] == "What time is it?"
+
+
 async def test_toggle_wake_without_model_reports_error(make_core):
     core = await make_core([], wake={"enabled": False, "model": "/nonexistent"})
     state = core.toggle_wake()
@@ -72,15 +88,16 @@ MODEL = os.environ.get("ELEN_TEST_VOSK_MODEL", "/tmp/claude-0/vosk/vosk-model-sm
 
 
 @pytest.mark.skipif(not (Path(MODEL).exists() and shutil.which("espeak-ng")), reason="needs a Vosk model and espeak-ng")
-def test_real_vosk_engine(tmp_path):
+@pytest.mark.parametrize("match", ["fuzzy", "exact"])
+def test_real_vosk_engine(tmp_path, match):
     np = pytest.importorskip("numpy")
     from elen.wake import VoskEngine
 
-    eng = VoskEngine({"model": MODEL}, Path("."))
+    eng = VoskEngine({"model": MODEL, "match": match}, Path("."))
 
-    def speak(text):
+    def speak(text, voice="en-us"):
         wav = tmp_path / "s.wav"
-        subprocess.run(["espeak-ng", "-v", "en-us", "-w", str(wav), text], check=True)
+        subprocess.run(["espeak-ng", "-v", voice, "-w", str(wav), text], check=True)
         with wave.open(str(wav)) as w:
             x = np.frombuffer(w.readframes(w.getnframes()), np.int16).astype(np.float32)
             rate = w.getframerate()
@@ -88,12 +105,19 @@ def test_real_vosk_engine(tmp_path):
         y = np.interp(t, np.arange(len(x)) / rate, x)
         return np.concatenate([np.zeros(8000), y, np.zeros(16000)]).astype(np.int16).tobytes()
 
-    def triggers(text):
+    def triggers(text, voice="en-us"):
         eng.reset()
-        data = speak(text)
+        data = speak(text, voice)
         return any(eng.process(data[i:i + 3200]) for i in range(0, len(data), 3200))
 
     assert triggers("Hey Ellen")
     assert triggers("Okay Ellen, open my calendar") and len(eng.tail) > 16000
     assert not triggers("Hey Jarvis")
     assert not triggers("I talked with Helen and Allen about the yellow bus")
+    if match == "fuzzy":  # the name alone, said in other ways, and words near it
+        assert triggers("Elen") and triggers("Elen, open my calendar", "en-gb")
+        assert triggers("Hi Elen, what time is it", "en-gb")
+        assert triggers("Ellen, what is the weather") and len(eng.tail) > 16000
+        for text in ("hello there", "eleven people came", "leave me alone", "a melon and a lemon",
+                     "call Alan tomorrow", "send this to Ellen please", "open the window"):
+            assert not triggers(text), text

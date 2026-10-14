@@ -1,8 +1,9 @@
 """Wake word: say "Hey Ellen" and Elen starts listening, no shortcut needed.
 
 Engines:
-  vosk          (default) offline speech recognition limited to your wake phrases.
-                Any phrase works without training. Needs a Vosk model folder:
+  vosk          (default) offline speech recognition limited to a small grammar: the
+                name, names that sound like it, and decoy words. A fuzzy match by
+                sound then decides (wakematch.py). Needs a Vosk model folder:
                 `elen download-wake-model` gets the small English one (40 MB).
   openwakeword  small neural wake-word models (.onnx), for example "hey_jarvis",
                 or one you trained for "hey elen". Install: see docs.
@@ -21,12 +22,15 @@ import zipfile
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Protocol
 
+from .wakematch import DECOYS, GREETINGS, SOUND_ALIKES, WakeMatcher
+
 log = logging.getLogger("elen.wake")
 
 RATE = 16000
 CHUNK_BYTES = 3200  # 100 ms of 16 kHz mono S16LE
 VOSK_SMALL_EN = "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip"
 DEFAULT_PHRASES = ["hey ellen", "hi ellen", "okay ellen"]
+END_PAUSE = 0.15  # seconds of silence before a name at the end of a sentence
 
 
 class WakeEngine(Protocol):
@@ -35,7 +39,14 @@ class WakeEngine(Protocol):
 
 
 class VoskEngine:
-    """Keyword spotting with a grammar: the recognizer can only hear the phrases or [unk]."""
+    """Keyword spotting with a Vosk grammar: the recognizer can only hear the grammar words.
+
+    match = "fuzzy" (default): the grammar holds the name, names that sound like it
+    (Helen, Allen, Alon ...), common words that sound near it (decoys) and greetings.
+    WakeMatcher then decides by sound and by position: "Helen, open my calendar" wakes,
+    "I talked with Helen" does not. See wakematch.py.
+    match = "exact": the grammar holds only `phrases` (the first version of this feature).
+    """
 
     def __init__(self, cfg: dict[str, Any], default_model_dir: Path):
         from vosk import KaldiRecognizer, Model, SetLogLevel
@@ -45,25 +56,41 @@ class VoskEngine:
         if not path.exists():
             raise RuntimeError(f"Vosk model not found at {path}. Run: elen download-wake-model")
         self.model = Model(str(path))
-        phrases = [p.lower().strip() for p in (cfg.get("phrases") or DEFAULT_PHRASES) if p.strip()]
-        known = []
-        for phrase in phrases:
-            missing = [w for w in phrase.split() if self.model.vosk_model_find_word(w) < 0]
-            if missing:
-                log.warning("wake phrase '%s' skipped: the model does not know %s", phrase, missing)
-            else:
-                known.append(phrase)
-        if not known:
-            raise RuntimeError("None of the wake phrases use words the Vosk model knows.")
-        self.phrases = known
-        self.min_conf = float(cfg.get("threshold", 0.5))
+        self.fuzzy = str(cfg.get("match") or "fuzzy").lower() != "exact"
+        # Lowest recognizer confidence for the name. In fuzzy mode similar names in the
+        # grammar share the confidence, so its limit is lower.
+        self.min_conf = float(cfg.get("confidence", 0.25)) if self.fuzzy else float(cfg.get("threshold", 0.5))
         # fast = react on partial results: quicker, but more false triggers. Off by default.
         self.use_partial = bool(cfg.get("fast", False))
-        self._make = lambda: KaldiRecognizer(self.model, RATE, json.dumps(known + ["[unk]"]))
+        if self.fuzzy:
+            self.matcher = WakeMatcher(cfg)
+            names = self._known(SOUND_ALIKES + self.matcher.names)
+            self.variants = self.matcher.variants(names)
+            if not self.variants:
+                raise RuntimeError(f"No word in the Vosk model sounds like {self.matcher.names}.")
+            grammar = self.variants + self._known(sorted(GREETINGS) + DECOYS)
+            log.info("wake name variants: %s", ", ".join(self.variants))
+        else:
+            phrases = [p.lower().strip() for p in (cfg.get("phrases") or DEFAULT_PHRASES) if p.strip()]
+            known = []
+            for phrase in phrases:
+                missing = [w for w in phrase.split() if self.model.vosk_model_find_word(w) < 0]
+                if missing:
+                    log.warning("wake phrase '%s' skipped: the model does not know %s", phrase, missing)
+                else:
+                    known.append(phrase)
+            if not known:
+                raise RuntimeError("None of the wake phrases use words the Vosk model knows.")
+            self.phrases = grammar = known
+        grammar = list(dict.fromkeys(grammar)) + ["[unk]"]
+        self._make = lambda: KaldiRecognizer(self.model, RATE, json.dumps(grammar))
         self.rec = self._make()
         self.rec.SetWords(True)
         self._audio = bytearray()  # audio of the current utterance
-        self.tail = b""  # audio said right after the wake phrase, in the same breath
+        self.tail = b""  # the request said in the same breath as the wake word
+
+    def _known(self, words: list[str]) -> list[str]:
+        return [w for w in dict.fromkeys(words) if self.model.vosk_model_find_word(w) >= 0]
 
     def _first_phrase(self, words: list[dict]) -> list[dict] | None:
         """The words of the first wake phrase in the result, if they are confident enough."""
@@ -81,7 +108,32 @@ class VoskEngine:
         return best[1]
 
     def _hit(self, text: str) -> bool:
+        if self.fuzzy:
+            found = self.matcher.find(text.split())
+            return found is not None and found.where == "start"
         return any(p in text for p in self.phrases)
+
+    def _fuzzy_hit(self, words: list[dict], audio: bytes) -> bool:
+        found = self.matcher.find(words)
+        if found is None:
+            return False
+        name = words[found.start:found.end]
+        if min(w.get("conf", 1.0) for w in name) < self.min_conf:
+            log.debug("wake: '%s' sounds right but conf is low", found.heard)
+            return False
+        start = name[0].get("start", 0)
+        if found.where == "end" and start - words[found.start - 1].get("end", start) < END_PAUSE:
+            # "What time is it, Elen" has a short pause before the name, "lunch with Helen" not.
+            return False
+        log.info("wake: heard '%s' (sound %.2f, %s)", found.heard, found.score, found.where)
+        if found.where == "end":
+            # "What time is it, Elen": the request is the audio before the name.
+            self.tail = audio[: int(start * RATE) * 2] if start > 0.5 else b""
+        else:
+            # "Elen, open my calendar" in one breath: keep the audio after the name.
+            end = name[-1].get("end", 0)
+            self.tail = audio[int(end * RATE) * 2:] if words[-1].get("end", 0) - end > 0.3 else b""
+        return True
 
     def process(self, chunk: bytes) -> bool:
         self._audio.extend(chunk)
@@ -90,9 +142,11 @@ class VoskEngine:
         if self.rec.AcceptWaveform(chunk):
             result = json.loads(self.rec.Result())
             audio, self._audio = bytes(self._audio), bytearray()
+            words = result.get("result") or []
+            if self.fuzzy:
+                return self._fuzzy_hit(words, audio)
             if not self._hit(result.get("text", "")):
                 return False
-            words = result.get("result") or []
             match = self._first_phrase(words)
             if match is None:
                 return False

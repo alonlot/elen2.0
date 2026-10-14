@@ -133,7 +133,7 @@ but a stronger model makes far fewer mistakes.
 - **Quiet hours** (default 22:00 to 07:00): notices are shown but not spoken.
 - Plugins can add their own notices with a `watch()` method (see docs/PLUGINS.md).
 
-## Wake word: "Hey Ellen"
+## Wake word: "Elen"
 
 ```bash
 ~/.local/share/elen/venv/bin/elen download-wake-model      # offline model, 40 MB
@@ -141,18 +141,57 @@ but a stronger model makes far fewer mistakes.
 systemctl --user restart elen
 ```
 
-Then say **"Hey Ellen"**, hear the chime, and say your request. You can also say it in one
-breath: "Hey Ellen, open my calendar". Elen keeps the words after the wake phrase. Saying the
-wake word while Elen speaks stops her speech.
+Then say **"Elen"** (or "Hey Elen"), hear the chime, and say your request. You can also say it
+in one breath: "Elen, open my calendar". Elen keeps the words after her name. Saying her name
+while Elen speaks stops her speech.
 
 - The default engine (Vosk) runs on your computer. Audio leaves the computer only after the
-  wake phrase, for speech to text.
-- The phrase is written "ellen" because the model knows that word; it sounds the same.
-  Change `[wake] phrases` to any words the model knows.
+  name is heard, for speech to text.
+
+### Fuzzy name match
+
+Speech to text does not know the name "Elen", so it writes Ellen, Helen, Allen, Elon or Alon.
+`elen/wakematch.py` compares words by **sound**, not by spelling:
+
+1. It turns spelling into sounds: double letters merge, a silent final e goes, "helen" becomes
+   h-e-l-e-n.
+2. A weighted edit distance compares the sounds. Changes that speech to text often makes are
+   cheap: one vowel for another (e/a/i/y are the cheapest), a lost "h" at the start, n/m.
+   Other changes cost more. The result is a similarity from 0 to 1: Ellen 1.0, Helen 0.94,
+   Allen 0.94, Alon 0.85, hello 0.60, eleven 0.62.
+3. The **position** decides if you talk *to* Elen or *about* a person. "Helen, open my
+   calendar" wakes. "I talked with Helen" does not. After "hey", "hi" or "okay" a weaker
+   match is enough ("Hey Len").
+4. The Vosk grammar holds the names that sound like "Elen" (one per sound, so they do not
+   split the confidence), greetings, and **decoys**: common words near the name (hello,
+   alone, eleven, lemon ...). A decoy catches those sounds and never wakes Elen.
+5. When the request is transcribed, a name used as a call is removed:
+   "Helen, open my calendar." becomes "Open my calendar.". "Helen is coming at five." stays.
+
+Settings in `[wake]`:
+
+| key | default | what it does |
+|---|---|---|
+| `match` | `"fuzzy"` | `"exact"` uses only `phrases` (the old mode) |
+| `names` | `["elen"]` | the names to answer to, for example `["elen", "jarvis"]` |
+| `similarity` | `0.8` | how near a word must sound (0 to 1). Higher = fewer false wakes |
+| `where` | `"start"` | `"start_end"` also wakes on "What time is it, Elen" (see below) |
+| `never` | `[]` | words that never wake Elen, for example `["alon"]` |
+| `confidence` | `0.25` | lowest recognizer confidence for the name |
+
+**Important:** if a person in your home has a name near "Elen" (Alon, Ellen, Helen), add it to
+`never`: `elen set wake.never '["alon"]'`. Otherwise "Alon, dinner is ready" wakes Elen.
+
+Test results with synthetic speech (espeak-ng, 6 voices, 22 sentences, 132 cases): 130 correct.
+Two false wakes: "all in all it was fine" and "hey there how are you", each with one voice.
+Real voices, accents and microphones differ. If Elen wakes by mistake, raise `similarity`
+(0.85) or `confidence` (0.4). If she does not hear you, lower them.
+
+`where = "start_end"` is weaker. The grammar does not hold normal words, so Elen cannot see
+"lunch with Helen". She uses the short pause before a name you call instead. In the tests it
+blocked all mentions but heard only about half of the calls at the end.
+
 - The ear button in the chat header turns the wake word off and on (green = listening).
-- Tested here with synthetic speech: it wakes on "Hey / Okay Ellen" and stays quiet for
-  "Hey Jarvis" and for sentences with Helen or Allen. Real rooms, accents and microphones
-  differ: raise `threshold` if it wakes up by mistake, lower it if it does not hear you.
 - `engine = "openwakeword"` uses neural wake-word models (for example `hey_jarvis` or one you
   train). Its current release does not install on Python 3.12, which Ubuntu 24.04 uses, so
   Vosk is the default.
@@ -296,7 +335,6 @@ For a quick test of the extension in a nested shell on GNOME 46:
 
 ## Known limits
 
-- No wake word yet ("Hey Elen"). Voice starts with the shortcut or the mic button.
 - Google Calendar is read only (through its secret ICS address). Write access needs CalDAV
   (Nextcloud, iCloud, Fastmail and others).
 - There is no phone/call plugin yet. Any plugin that marks its number argument in
