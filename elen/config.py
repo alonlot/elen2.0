@@ -88,7 +88,7 @@ DEFAULTS: dict[str, Any] = {
         "names": ["elen"],
         "similarity": 0.8,
         "where": "start",
-        "never": [],
+        "never": ["alon"],  # a person in the home
         "phrases": ["hey ellen", "hi ellen", "okay ellen"],
         "model": "",
         "threshold": 0.5,

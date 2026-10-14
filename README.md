@@ -150,7 +150,7 @@ while Elen speaks stops her speech.
 
 ### Fuzzy name match
 
-Speech to text does not know the name "Elen", so it writes Ellen, Helen, Allen, Elon or Alon.
+Speech to text does not know the name "Elen", so it writes Ellen, Helen, Allen or Elon.
 `elen/wakematch.py` compares words by **sound**, not by spelling:
 
 1. It turns spelling into sounds: double letters merge, a silent final e goes, "helen" becomes
@@ -158,7 +158,7 @@ Speech to text does not know the name "Elen", so it writes Ellen, Helen, Allen, 
 2. A weighted edit distance compares the sounds. Changes that speech to text often makes are
    cheap: one vowel for another (e/a/i/y are the cheapest), a lost "h" at the start, n/m.
    Other changes cost more. The result is a similarity from 0 to 1: Ellen 1.0, Helen 0.94,
-   Allen 0.94, Alon 0.85, hello 0.60, eleven 0.62.
+   Allen 0.94, Elon 0.91, hello 0.60, eleven 0.62.
 3. The **position** decides if you talk *to* Elen or *about* a person. "Helen, open my
    calendar" wakes. "I talked with Helen" does not. After "hey", "hi" or "okay" a weaker
    match is enough ("Hey Len").
@@ -176,14 +176,18 @@ Settings in `[wake]`:
 | `names` | `["elen"]` | the names to answer to, for example `["elen", "jarvis"]` |
 | `similarity` | `0.8` | how near a word must sound (0 to 1). Higher = fewer false wakes |
 | `where` | `"start"` | `"start_end"` also wakes on "What time is it, Elen" (see below) |
-| `never` | `[]` | words that never wake Elen, for example `["alon"]` |
+| `never` | `["alon"]` | names that never wake Elen (people in your home) |
 | `confidence` | `0.25` | lowest recognizer confidence for the name |
 
-**Important:** if a person in your home has a name near "Elen" (Alon, Ellen, Helen), add it to
-`never`: `elen set wake.never '["alon"]'`. Otherwise "Alon, dinner is ready" wakes Elen.
+**Important:** if a person in your home has a name near "Elen", put it in `never`. The default
+is `["alon"]`. Add more with `elen set wake.never '["alon", "helen"]'`. A `never` word is also put
+in the grammar as a decoy. This is necessary: if "alon" were only removed, Vosk would write the
+sound as the nearest name left (Alan, Elon) and Elen would wake anyway.
 
-Test results with synthetic speech (espeak-ng, 6 voices, 22 sentences, 132 cases): 130 correct.
+Test results with synthetic speech (espeak-ng, 6 voices, 27 sentences, 162 cases): 158 correct.
+None of the 30 "Alon" cases ("Alon, dinner is ready", "hey Alon" ...) woke Elen.
 Two false wakes: "all in all it was fine" and "hey there how are you", each with one voice.
+Two misses: "Helen, read my mail" with two voices (confidence 0.23, under the 0.25 limit).
 Real voices, accents and microphones differ. If Elen wakes by mistake, raise `similarity`
 (0.85) or `confidence` (0.4). If she does not hear you, lower them.
 

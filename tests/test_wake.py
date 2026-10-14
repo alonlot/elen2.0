@@ -93,7 +93,7 @@ def test_real_vosk_engine(tmp_path, match):
     np = pytest.importorskip("numpy")
     from elen.wake import VoskEngine
 
-    eng = VoskEngine({"model": MODEL, "match": match}, Path("."))
+    eng = VoskEngine({"model": MODEL, "match": match, "never": ["alon"]}, Path("."))
 
     def speak(text, voice="en-us"):
         wav = tmp_path / "s.wav"
@@ -119,5 +119,6 @@ def test_real_vosk_engine(tmp_path, match):
         assert triggers("Hi Elen, what time is it", "en-gb")
         assert triggers("Ellen, what is the weather") and len(eng.tail) > 16000
         for text in ("hello there", "eleven people came", "leave me alone", "a melon and a lemon",
-                     "call Alan tomorrow", "send this to Ellen please", "open the window"):
+                     "call Alan tomorrow", "send this to Ellen please", "open the window",
+                     "Alon, dinner is ready", "hey Alon"):
             assert not triggers(text), text

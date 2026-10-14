@@ -68,7 +68,9 @@ class VoskEngine:
             self.variants = self.matcher.variants(names)
             if not self.variants:
                 raise RuntimeError(f"No word in the Vosk model sounds like {self.matcher.names}.")
-            grammar = self.variants + self._known(sorted(GREETINGS) + DECOYS)
+            # `never` words are decoys too: "Alon" needs its own word in the grammar, or
+            # Vosk writes the nearest name left (Alan, Elon) and Elen wakes anyway.
+            grammar = self.variants + self._known(sorted(GREETINGS) + DECOYS + sorted(self.matcher.never))
             log.info("wake name variants: %s", ", ".join(self.variants))
         else:
             phrases = [p.lower().strip() for p in (cfg.get("phrases") or DEFAULT_PHRASES) if p.strip()]
