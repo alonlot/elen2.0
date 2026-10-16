@@ -37,6 +37,9 @@ class ElenIndicator extends PanelMenu.Button {
         this._ids = new Set();
         this._state = 'offline';
         this._live = null;
+        this._stick = true;       // keep the view on the newest message
+        this._autoScrolling = false;
+        this._scrollId = 0;
 
         const box = new St.BoxLayout({style_class: 'elen-panel-box'});
         this._orb = new Orb(18, 'offline');
@@ -103,6 +106,20 @@ class ElenIndicator extends PanelMenu.Button {
         this._scroll.set_child(this._messages);
         root.add_child(this._scroll);
 
+        // Follow new content only after layout has set the real size. A timer
+        // can read old sizes and leave the view below the last message.
+        // GNOME 46+ has vadjustment; GNOME 45 has it on the scroll bar.
+        const adj = this._scroll.vadjustment ?? this._scroll.vscroll.adjustment;
+        this._adj = adj;
+        adj.connect('notify::value', () => {
+            if (!this._autoScrolling)
+                this._stick = adj.value >= adj.upper - adj.page_size - 24;
+        });
+        adj.connect('changed', () => {
+            if (this._stick)
+                this._queueScroll();
+        });
+
         const input = new St.BoxLayout({style_class: 'elen-chat-input'});
         this._entry = new St.Entry({
             hint_text: 'Ask Elen…',
@@ -144,6 +161,7 @@ class ElenIndicator extends PanelMenu.Button {
     }
 
     _onOpen() {
+        this._stick = true;
         this.reloadHistory();
         GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
             global.stage.set_key_focus(this._entry);
@@ -153,11 +171,17 @@ class ElenIndicator extends PanelMenu.Button {
 
     reloadHistory() {
         this._client.call('GetHistory').then(json => {
+            // A reply that is still streaming is not in the history yet: keep its text.
+            const live = this._live;
             this._live = null;
             this._messages.destroy_all_children();
             this._ids.clear();
             for (const m of JSON.parse(json))
                 this.addMessage(m, false);
+            if (live) {
+                const [row, label] = this._addLabel(plain(live.text), 'elen-msg elen live');
+                this._live = {id: live.id, row, label, text: live.text};
+            }
             this._scrollToEnd();
         }).catch(() => this._showOffline());
     }
@@ -258,20 +282,38 @@ class ElenIndicator extends PanelMenu.Button {
         label.clutter_text.line_wrap = true;
         label.clutter_text.line_wrap_mode = Pango.WrapMode.WORD_CHAR;
         label.clutter_text.ellipsize = Pango.EllipsizeMode.NONE;
-        const align = styleClass.includes('user') ? Clutter.ActorAlign.END : Clutter.ActorAlign.START;
+        // The label does not expand: it gets its natural width (max-width in
+        // the CSS) and its height is measured for that same width. An expanding
+        // label got a height for the full row but wrapped at max-width, so its
+        // text ran out of the bubble below it. A spacer takes the free space.
+        label.y_align = Clutter.ActorAlign.START;
         const row = new St.BoxLayout({x_expand: true});
-        label.x_align = align;
-        label.x_expand = true;
-        row.add_child(label);
+        const spacer = new St.Widget({x_expand: true});
+        if (styleClass.includes('user')) {
+            row.add_child(spacer);
+            row.add_child(label);
+        } else {
+            row.add_child(label);
+            row.add_child(spacer);
+        }
         this._messages.add_child(row);
         return [row, label];
     }
 
     _scrollToEnd() {
-        GLib.timeout_add(GLib.PRIORITY_DEFAULT, 60, () => {
-            const adj = this._scroll.vadjustment ?? this._scroll.get_vscroll_bar?.()?.get_adjustment();
-            if (adj)
-                adj.value = adj.upper - adj.page_size;
+        this._stick = true;
+        this._queueScroll();
+    }
+
+    _queueScroll() {
+        if (this._scrollId)
+            return;
+        this._scrollId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+            this._scrollId = 0;
+            const adj = this._adj;
+            this._autoScrolling = true;
+            adj.value = Math.max(adj.lower, adj.upper - adj.page_size);
+            this._autoScrolling = false;
             return GLib.SOURCE_REMOVE;
         });
     }
@@ -291,6 +333,7 @@ class ElenIndicator extends PanelMenu.Button {
         this._live = null;
         this._messages.destroy_all_children();
         this._ids.clear();
+        this._scrollToEnd();
     }
 
     toggleListening() {
@@ -326,9 +369,14 @@ class ElenIndicator extends PanelMenu.Button {
         this._live = null;
         this._messages.destroy_all_children();
         this._ids.clear();
+        this._scrollToEnd();
     }
 
     destroy() {
+        if (this._scrollId) {
+            GLib.source_remove(this._scrollId);
+            this._scrollId = 0;
+        }
         this._orb?.destroy();
         this._orb = null;
         super.destroy();
