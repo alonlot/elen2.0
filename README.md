@@ -16,11 +16,15 @@ A Jarvis-like personal assistant for Ubuntu 24.04 (GNOME 46, Wayland).
   tables, text, screenshots. Any plugin can show any of these.
 - **Screen vision**: Elen can take a screenshot and ask the vision model about it when it
   decides that helps ("what is this error?").
-- **Highlight**: "Elen, highlight the missing ; in my code". Elen puts a grid of 24 or more
-  labelled cells on each monitor, asks the vision model which cells hold the target, zooms in
-  on them with a finer grid, then takes a new screenshot with the box drawn on it and asks the
-  vision model to check it. A wrong box is never shown: Elen tries again (3 tries by default)
-  and tells the model which guess was wrong. Settings: `[plugins.highlight]`.
+- **Highlight**: "Elen, highlight the missing ; in my code". Vision models read screens well
+  but give bad coordinates, so Elen first collects exact boxes: every text line and word on
+  the screen (OCR with RapidOCR, or Tesseract as the fallback) and the buttons, menus, links
+  and fields of the open apps (AT-SPI, the accessibility tree). The vision model only picks an item from that list, and
+  the part of a line if the target is smaller. When nothing in the list fits (an icon, a
+  picture), Elen uses a grid of labelled cells on each monitor and zooms in. Then it takes a
+  new screenshot with the box drawn on it and asks the vision model to check it. A wrong box
+  is never shown: Elen tries again (3 tries by default) and tells the model which guess was
+  wrong. Settings: `[plugins.highlight]`.
 - **The brain is any LLM**, called through its normal API. The default provider speaks the
   OpenAI chat API, which almost every server uses: Ollama, LM Studio, vLLM, LiteLLM, OpenAI,
   OpenRouter, Groq, Gemini, Mistral, DeepSeek. The Claude API is also a provider. Models without
@@ -301,7 +305,12 @@ For a quick test of the extension in a nested shell on GNOME 46:
 
 ## Known limits
 
-- No wake word yet ("Hey Elen"). Voice starts with the shortcut or the mic button.
+- Highlight with AT-SPI: on Wayland, apps do not know where their windows are. Elen adds
+  the window position that GNOME reports, and the check step stops a wrong box. Apps without
+  accessibility support (some Electron and Java apps) give no controls; OCR and the grid still
+  work. RapidOCR reads English and Chinese. For other languages (for example Hebrew), set
+  `ocr_engine = "tesseract"`, install the Tesseract language and set `ocr_lang`. RapidOCR
+  adds about 170 MB to the install (ONNX Runtime and OpenCV).
 - Google Calendar is read only (through its secret ICS address). Write access needs CalDAV
   (Nextcloud, iCloud, Fastmail and others).
 - There is no phone/call plugin yet. Any plugin that marks its number argument in

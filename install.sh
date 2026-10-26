@@ -13,7 +13,7 @@ say() { printf '\033[96m▸ %s\033[0m\n' "$*"; }
 
 say "Checking system packages"
 MISSING=()
-for pkg in python3-venv alsa-utils libnotify-bin libglib2.0-bin; do
+for pkg in python3-venv alsa-utils libnotify-bin libglib2.0-bin tesseract-ocr python3-gi gir1.2-atspi-2.0; do
   dpkg -s "$pkg" >/dev/null 2>&1 || MISSING+=("$pkg")
 done
 if ((${#MISSING[@]})); then
@@ -25,7 +25,7 @@ say "Creating Python environment in $VENV"
 mkdir -p "$PREFIX"
 python3 -m venv "$VENV"
 "$VENV/bin/pip" install -q --upgrade pip
-"$VENV/bin/pip" install -q "$REPO[calendar,wake]"
+"$VENV/bin/pip" install -q "$REPO[calendar,wake,ocr]"
 
 say "Config in $CONF"
 mkdir -p "$CONF/plugins"

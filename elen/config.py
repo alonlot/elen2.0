@@ -127,6 +127,11 @@ DEFAULTS: dict[str, Any] = {
             "verify": True,
             "seconds": 12,
             "image_side": 1600,
+            "exact": ["ui", "ocr"],
+            "ocr_engine": "auto",
+            "ocr_lang": "eng",
+            "atspi_python": "/usr/bin/python3",
+            "max_candidates": 300,
         },
         "memory": {
             "enabled": True,

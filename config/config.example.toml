@@ -34,10 +34,17 @@ timeout = 900
 extra_args = []
 
 [plugins.highlight]
-# "Elen, highlight the missing ; in my code": Elen finds the target with the vision model and
-# draws a box on it. It puts a grid on each monitor, zooms in on the cells the model picks,
-# then checks the box on a new screenshot and tries again if the box is wrong.
+# "Elen, highlight the missing ; in my code": Elen finds the target and draws a box on it.
+# First it uses exact boxes: text lines from OCR (RapidOCR or Tesseract) and app controls from AT-SPI (the
+# accessibility tree); the vision model only picks one. If none fits (an icon, a picture), it
+# puts a grid on each monitor and zooms in on the cells the model picks. Then it checks the
+# box on a new screenshot and tries again if the box is wrong.
 enabled = true
+exact = ["ui", "ocr"]  # sources of exact boxes; [] = grid only
+ocr_engine = "auto"    # "auto" = RapidOCR if installed (pip install 'elen[ocr]'), else Tesseract
+ocr_lang = "eng"       # Tesseract only, for example "eng+heb" (apt install tesseract-ocr-heb)
+atspi_python = "/usr/bin/python3"  # a Python with python3-gi and gir1.2-atspi-2.0
+max_candidates = 300   # items in the list for the vision model
 cells = 24          # grid cells per monitor in the first look (minimum 20)
 zoom_cells = 16     # grid cells in each zoomed look
 max_zoom = 3        # zoom steps; stops before that when the area is smaller than min_size

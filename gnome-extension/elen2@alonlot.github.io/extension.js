@@ -130,16 +130,44 @@ export default class ElenExtension extends Extension {
         }
     }
 
+    // Visible windows, bottom to top, in stage pixels. The daemon uses them to put the
+    // accessibility boxes of an app on the screen and to drop boxes under other windows.
+    _visibleWindows() {
+        const rect = r => ({x: r.x, y: r.y, width: r.width, height: r.height});
+        const workspace = global.workspace_manager.get_active_workspace();
+        return global.get_window_actors()
+            .map(a => a.get_meta_window())
+            .filter(w => w && !w.minimized && w.showing_on_its_workspace() &&
+                (w.is_on_all_workspaces() || w.get_workspace() === workspace) &&
+                w.get_window_type() !== Meta.WindowType.DESKTOP)
+            .map(w => ({
+                pid: w.get_pid(),
+                title: w.get_title() ?? '',
+                wm_class: w.get_wm_class() ?? '',
+                x11: w.get_client_type() === Meta.WindowClientType.X11,
+                focus: w.has_focus(),
+                frame: rect(w.get_frame_rect()),
+                buffer: rect(w.get_buffer_rect()),
+            }));
+    }
+
     // Monitor positions in stage pixels, so the daemon can split the screenshot per monitor
     // and map a found spot back to the screen.
     _writeLayout(path) {
         const lm = Main.layoutManager;
+        let windows = [];
+        try {
+            windows = this._visibleWindows();
+        } catch (e) {
+            console.error(`Elen: cannot list windows: ${e}`);
+        }
         const layout = {
             stage: {width: global.stage.width, height: global.stage.height},
             monitors: lm.monitors.map(m => ({
                 index: m.index, x: m.x, y: m.y, width: m.width, height: m.height,
                 scale: m.geometry_scale ?? 1, primary: m.index === lm.primaryIndex,
             })),
+            windows,
         };
         try {
             GLib.file_set_contents(path, JSON.stringify(layout));
