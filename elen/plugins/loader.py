@@ -24,7 +24,7 @@ from . import Plugin
 
 log = logging.getLogger("elen.plugins")
 
-BUILTIN = ["system", "screen", "memory", "contacts", "email", "calendar", "claude_code"]
+BUILTIN = ["system", "screen", "highlight", "memory", "contacts", "email", "calendar", "claude_code"]
 
 
 def _plugin_classes(module) -> list[type[Plugin]]:

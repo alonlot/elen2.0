@@ -33,6 +33,19 @@ workdir = "~"
 timeout = 900
 extra_args = []
 
+[plugins.highlight]
+# "Elen, highlight the missing ; in my code": Elen finds the target with the vision model and
+# draws a box on it. It puts a grid on each monitor, zooms in on the cells the model picks,
+# then checks the box on a new screenshot and tries again if the box is wrong.
+enabled = true
+cells = 24          # grid cells per monitor in the first look (minimum 20)
+zoom_cells = 16     # grid cells in each zoomed look
+max_zoom = 3        # zoom steps; stops before that when the area is smaller than min_size
+min_size = 48       # screenshot pixels
+attempts = 3        # find + check rounds before Elen gives up (nothing is shown then)
+verify = true       # check the box on a new screenshot before showing it
+seconds = 12        # how long the box stays; 0 = until you click it
+
 # Your own plugins: [plugins.<name>] with any settings they need.
 # [plugins.weather]
 # city = "Tel Aviv"

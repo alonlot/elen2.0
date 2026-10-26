@@ -10,7 +10,10 @@ subscribe to events and call the public methods. Events:
   visual_hide      {}
   confirm          a Confirmation dict; answer with resolve_confirmation()
   confirm_closed   {"id","reason"}
-  screenshot_request {"id","path"}; answer with screenshot_done()
+  screenshot_request {"id","path"}; answer with screenshot_done(). The UI also writes the
+                   monitor layout to <path>.json (see plugins/builtin/highlight.py)
+  highlight        {"id","boxes":[{"x","y","width","height"}],"label","duration"}: stage pixels
+  highlight_hide   {}
   delta            {"id", "text"}: a piece of the reply while the model writes it
   delta_end        {"id"}: that streamed text was progress before a tool call, not the reply
   transcript       {"text"}
@@ -878,6 +881,7 @@ class Elen:
         shots.mkdir(parents=True, exist_ok=True)
         for old in sorted(shots.glob("*.png"))[:-20]:
             old.unlink(missing_ok=True)
+            Path(f"{old}.json").unlink(missing_ok=True)
         path = shots / f"screen-{time.strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:4]}.png"
         if self.ui_present:
             sid = uuid.uuid4().hex[:12]

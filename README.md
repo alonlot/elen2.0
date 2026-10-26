@@ -16,6 +16,11 @@ A Jarvis-like personal assistant for Ubuntu 24.04 (GNOME 46, Wayland).
   tables, text, screenshots. Any plugin can show any of these.
 - **Screen vision**: Elen can take a screenshot and ask the vision model about it when it
   decides that helps ("what is this error?").
+- **Highlight**: "Elen, highlight the missing ; in my code". Elen puts a grid of 24 or more
+  labelled cells on each monitor, asks the vision model which cells hold the target, zooms in
+  on them with a finer grid, then takes a new screenshot with the box drawn on it and asks the
+  vision model to check it. A wrong box is never shown: Elen tries again (3 tries by default)
+  and tells the model which guess was wrong. Settings: `[plugins.highlight]`.
 - **The brain is any LLM**, called through its normal API. The default provider speaks the
   OpenAI chat API, which almost every server uses: Ollama, LM Studio, vLLM, LiteLLM, OpenAI,
   OpenRouter, Groq, Gemini, Mistral, DeepSeek. The Claude API is also a provider. Models without

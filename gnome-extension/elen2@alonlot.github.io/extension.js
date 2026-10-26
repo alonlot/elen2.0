@@ -95,6 +95,12 @@ export default class ElenExtension extends Extension {
         case 'visual_hide':
             this._hud.hide();
             break;
+        case 'highlight':
+            this._hud.highlight(data);
+            break;
+        case 'highlight_hide':
+            this._hud.clearHighlight();
+            break;
         case 'confirm':
             this._indicator.menu.close();
             this._confirm.add(data);
@@ -124,6 +130,24 @@ export default class ElenExtension extends Extension {
         }
     }
 
+    // Monitor positions in stage pixels, so the daemon can split the screenshot per monitor
+    // and map a found spot back to the screen.
+    _writeLayout(path) {
+        const lm = Main.layoutManager;
+        const layout = {
+            stage: {width: global.stage.width, height: global.stage.height},
+            monitors: lm.monitors.map(m => ({
+                index: m.index, x: m.x, y: m.y, width: m.width, height: m.height,
+                scale: m.geometry_scale ?? 1, primary: m.index === lm.primaryIndex,
+            })),
+        };
+        try {
+            GLib.file_set_contents(path, JSON.stringify(layout));
+        } catch (e) {
+            console.error(`Elen: cannot write monitor layout: ${e}`);
+        }
+    }
+
     async _takeScreenshot({id, path}) {
         let ok = false;
         const menu = this._indicator?.menu;
@@ -142,6 +166,7 @@ export default class ElenExtension extends Extension {
             const shooter = new Shell.Screenshot();
             await shooter.screenshot(false, stream);
             stream.close(null);
+            this._writeLayout(`${path}.json`);
             ok = true;
         } catch (e) {
             console.error(`Elen: screenshot failed: ${e}`);

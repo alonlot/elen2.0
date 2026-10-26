@@ -117,6 +117,17 @@ DEFAULTS: dict[str, Any] = {
         "paths": [],
         "system": {"enabled": True},
         "screen": {"enabled": True},
+        "highlight": {
+            "enabled": True,
+            "cells": 24,
+            "zoom_cells": 16,
+            "max_zoom": 3,
+            "min_size": 48,
+            "attempts": 3,
+            "verify": True,
+            "seconds": 12,
+            "image_side": 1600,
+        },
         "memory": {
             "enabled": True,
             "max_facts_in_prompt": 60,

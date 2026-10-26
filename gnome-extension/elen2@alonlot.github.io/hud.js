@@ -481,6 +481,64 @@ export class Hud {
         this._toast = null;
         this._toastTimeout = 0;
         this._backdrop = null;
+        this._marks = [];
+        this._markTimeout = 0;
+    }
+
+    // Boxes around things on the screen (highlight plugin). Coordinates are stage pixels, so a
+    // box can be on any monitor. Clicks go through the box to the app; a click on its tag removes it.
+    highlight({boxes = [], label = '', duration = 12}) {
+        this.clearHighlight();
+        for (const b of boxes) {
+            const pad = 6;
+            const box = new St.Widget({
+                style_class: 'elen-highlight',
+                reactive: false,
+                x: Math.round(b.x - pad),
+                y: Math.round(b.y - pad),
+                width: Math.max(12, Math.round(b.width + 2 * pad)),
+                height: Math.max(12, Math.round(b.height + 2 * pad)),
+            });
+            Main.layoutManager.addTopChrome(box, {affectsInputRegion: false});
+            box.opacity = 0;
+            box.ease({opacity: 255, duration: 200, mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+                onComplete: () => box.ease({opacity: 140, duration: 700, mode: Clutter.AnimationMode.EASE_IN_OUT_QUAD,
+                    repeatCount: -1, autoReverse: true})});
+            this._marks.push(box);
+            {
+                const tag = new St.Label({text: label ? `${label}  ✕` : '✕', style_class: 'elen-highlight-label', reactive: true});
+                tag.connect('button-press-event', () => {
+                    this.clearHighlight();
+                    return Clutter.EVENT_STOP;
+                });
+                Main.layoutManager.addTopChrome(tag, {affectsInputRegion: true});
+                const [, tagHeight] = tag.get_preferred_height(-1);
+                const above = box.y - tagHeight - 4;
+                tag.set_position(box.x, above >= 0 ? above : box.y + box.height + 4);
+                this._marks.push(tag);
+            }
+        }
+        const seconds = Number(duration);
+        if (this._marks.length && seconds > 0) {
+            this._markTimeout = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, seconds, () => {
+                this._markTimeout = 0;
+                this.clearHighlight();
+                return GLib.SOURCE_REMOVE;
+            });
+        }
+    }
+
+    clearHighlight() {
+        if (this._markTimeout) {
+            GLib.source_remove(this._markTimeout);
+            this._markTimeout = 0;
+        }
+        for (const a of this._marks) {
+            a.remove_all_transitions();
+            Main.layoutManager.removeChrome(a);
+            a.destroy();
+        }
+        this._marks = [];
     }
 
     // An invisible layer behind the visual: a click anywhere outside the visual closes it.
@@ -648,10 +706,13 @@ export class Hud {
             if (a)
                 a.opacity = visible ? 255 : 0;
         }
+        for (const a of this._marks)
+            a.visible = visible;
     }
 
     destroy() {
         this.hide(true);
         this._hideToast();
+        this.clearHighlight();
     }
 }
