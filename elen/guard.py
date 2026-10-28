@@ -17,8 +17,9 @@ import json
 import re
 import time
 import uuid
-from urllib.parse import urlparse
 from dataclasses import dataclass, field
+from email.utils import formataddr, getaddresses, parseaddr
+from urllib.parse import urlparse
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -28,13 +29,23 @@ EMAIL_RE = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
 PHONE_RE = re.compile(r"\+?\d[\d\s\-().]{6,}\d")
 
 ACTION_CLAIM_RE = re.compile(
-    r"\b(?:I(?:'ve| have)?|I just|I've just|has been|have been|was|were)\s+"
+    r"(?:\bI(?:['’]ve| have)?(?:\s+just)?|\b(?:has|have)\s+been|\b(?:was|were|is|are)(?:\s+now)?|"
+    # a whole short line: "Sent!", "Email sent.", "The meeting booked."
+    r"^\s*(?:(?:the|your)\s+)?(?:(?:e-?mail|mail|message|reply|meeting|event|invitation)\s+)?"
+    r"(?=\w+\s*[.!]?\s*$))\s*"
     r"(?:successfully\s+)?"
     r"(sent|emailed|mailed|replied|forwarded|scheduled|booked|created|added|deleted|removed|"
     r"cancel(?:l)?ed|called|messaged|texted|moved|ran|executed|installed|saved|submitted|paid|"
     r"ordered|posted|published|updated)\b",
-    re.IGNORECASE,
+    re.IGNORECASE | re.MULTILINE,
 )
+# Claims that only a write or dangerous action can make true. A small action such as
+# memory__remember ("I saved that") must not hide a false "I sent the email".
+STRONG_CLAIMS = {
+    "sent", "emailed", "mailed", "replied", "forwarded", "scheduled", "booked", "deleted", "removed",
+    "canceled", "cancelled", "called", "messaged", "texted", "ran", "executed", "installed",
+    "submitted", "paid", "ordered", "posted", "published",
+}
 
 
 def split_addresses(value: Any) -> list[str]:
@@ -46,13 +57,28 @@ def split_addresses(value: Any) -> list[str]:
             items.extend(split_addresses(v))
         return items
     text = str(value)
+    if "@" in text:
+        # Email: split like the mail plugin does, so a comma inside a quoted display name
+        # ("Doe, John" <j@x.com>) does not cut an address in two.
+        items = []
+        for part in getaddresses([text.replace(";", ",")]):
+            name, addr = part
+            if addr:
+                items.append(formataddr((name, addr)) if name else addr)
+            elif name:
+                items.append(name)
+        return items
     return [p.strip() for p in re.split(r"[,;]", text) if p.strip()]
 
 
 def normalise(addr: str) -> str:
-    m = EMAIL_RE.search(addr)
-    if m:
-        return m.group(0).lower()
+    """The address a message really goes to. For '"alice@a.com" <evil@x.com>' this is
+    evil@x.com (the part in <...>), not the address-like display name."""
+    if "@" in addr:
+        _, real = parseaddr(addr)
+        if real and EMAIL_RE.fullmatch(real):
+            return real.lower()
+        return addr.strip().lower()  # not one valid address: matches no contact
     digits = re.sub(r"[^\d+]", "", addr)
     return digits or addr.strip().lower()
 
@@ -87,13 +113,19 @@ class Confirmation:
 
 
 def scope_value(value: Any) -> str:
-    """How an argument counts for an allow rule: a URL by its domain, addresses normalised."""
+    """How an argument counts for an allow rule: a URL by its scheme and domain
+    (https://youtube.com), addresses normalised."""
     if isinstance(value, (list, tuple)):
         return ", ".join(sorted(scope_value(v) for v in value))
     text = str(value or "").strip()
-    if re.match(r"^[a-z][a-z0-9+.-]*://", text, re.I):
-        host = (urlparse(text).hostname or "").lower()
-        return host[4:] if host.startswith("www.") else host
+    if re.match(r"^[a-z][a-z0-9+.-]*:", text, re.I) and not EMAIL_RE.fullmatch(text):
+        url = urlparse(text)
+        host = (url.hostname or "").lower()
+        if not host:
+            return text.lower()  # file:///..., mailto:...: only this exact target
+        host = host[4:] if host.startswith("www.") else host
+        scheme = "https" if url.scheme.lower() in ("http", "https") else url.scheme.lower()
+        return f"{scheme}://{host}"
     if EMAIL_RE.search(text):
         return ", ".join(sorted(normalise(a) for a in split_addresses(text)))
     return text.lower()
@@ -153,7 +185,9 @@ class Guard:
         """The scope an allow rule for this call would have, or None if it cannot have one."""
         if self.effective_risk(spec) == "dangerous" or not self.cfg.get("allow_rules", True):
             return None
-        keys = spec.allow_scope if spec.allow_scope is not None else spec.recipients
+        if spec.allow_scope is False:
+            return None
+        keys = spec.allow_scope if isinstance(spec.allow_scope, tuple) else spec.recipients
         return {k: scope_value(args.get(k)) for k in keys}
 
     @staticmethod
@@ -186,7 +220,7 @@ class Guard:
         for field_name in spec.recipients:
             for raw in split_addresses(args.get(field_name)):
                 norm = normalise(raw)
-                if field_name and "@" not in raw and not PHONE_RE.search(raw):
+                if ("@" not in raw and not PHONE_RE.search(raw)) or ("@" in raw and not EMAIL_RE.fullmatch(norm)):
                     status = "invalid"
                     warnings.append(f"'{raw}' in '{field_name}' is not an address or number.")
                 elif norm in known_norm:
@@ -208,9 +242,14 @@ class Guard:
         """Flag a reply that claims an action no tool performed in this turn."""
         if not self.cfg.get("action_claim_check", True) or not text:
             return None
-        if any(a.get("ok") and a.get("risk") in ("low", "write", "dangerous") for a in executed):
+        did_small = any(a.get("ok") and a.get("risk") == "low" for a in executed)
+        did_big = any(a.get("ok") and a.get("risk") in ("write", "dangerous") for a in executed)
+        if did_big:
             return None
-        m = ACTION_CLAIM_RE.search(text)
+        m = next(
+            (m for m in ACTION_CLAIM_RE.finditer(text) if not did_small or m.group(1).lower() in STRONG_CLAIMS),
+            None,
+        )
         if not m:
             return None
         return (

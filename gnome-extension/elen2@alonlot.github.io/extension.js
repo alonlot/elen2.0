@@ -36,6 +36,11 @@ export default class ElenExtension extends Extension {
     }
 
     disable() {
+        if (this._shotDelayId) {
+            // The screenshot promise never resolves then; it only waits for this timer.
+            GLib.source_remove(this._shotDelayId);
+            this._shotDelayId = 0;
+        }
         Main.wm.removeKeybinding('toggle-chat');
         Main.wm.removeKeybinding('push-to-talk');
         Main.wm.removeKeybinding('stop');
@@ -55,12 +60,15 @@ export default class ElenExtension extends Extension {
             return;
         if (!connected) {
             this._indicator.setState('offline');
+            this._confirm?.clear();
             return;
         }
         this._client.call('RegisterUI').then(json => {
-            this._indicator?.setState('idle');
-            this._indicator?.setWakeState(JSON.parse(json ?? '{}').wake ?? {enabled: false});
-            return this._client.call('PendingConfirmations');
+            // The daemon may be busy (after a screen unlock the extension starts again).
+            const status = JSON.parse(json ?? '{}');
+            this._indicator?.setState(status.state ?? 'idle');
+            this._indicator?.setWakeState(status.wake ?? {enabled: false});
+            return this._client?.call('PendingConfirmations');
         }).then(json => {
             for (const conf of JSON.parse(json ?? '[]'))
                 this._confirm?.add(conf);
@@ -73,6 +81,13 @@ export default class ElenExtension extends Extension {
         switch (kind) {
         case 'state':
             this._indicator.setState(data.state);
+            break;
+        case 'reloaded':
+            // Settings were saved and the daemon restarted its parts: the wake listener
+            // can be on or off now.
+            this._indicator.setWakeState(data.wake ?? {enabled: false});
+            if (data.state)
+                this._indicator.setState(data.state);
             break;
         case 'message':
             this._indicator.addMessage(data);
@@ -185,10 +200,15 @@ export default class ElenExtension extends Extension {
             if (menuWasVisible)
                 menu.actor.opacity = 0;
             this._hud?.setVisible(false);
-            await new Promise(resolve => GLib.timeout_add(GLib.PRIORITY_DEFAULT, 120, () => {
-                resolve();
-                return GLib.SOURCE_REMOVE;
-            }));
+            await new Promise(resolve => {
+                this._shotDelayId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 120, () => {
+                    this._shotDelayId = 0;
+                    resolve();
+                    return GLib.SOURCE_REMOVE;
+                });
+            });
+            if (!this._indicator)
+                throw new Error('extension disabled');
             const file = Gio.File.new_for_path(path);
             const stream = file.replace(null, false, Gio.FileCreateFlags.NONE, null);
             const shooter = new Shell.Screenshot();
@@ -199,7 +219,8 @@ export default class ElenExtension extends Extension {
         } catch (e) {
             console.error(`Elen: screenshot failed: ${e}`);
         } finally {
-            if (menuWasVisible && menu)
+            // Read the menu again: disable() may have destroyed the one from before the await.
+            if (menuWasVisible && this._indicator?.menu === menu)
                 menu.actor.opacity = 255;
             this._hud?.setVisible(true);
         }

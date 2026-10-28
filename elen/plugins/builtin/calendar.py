@@ -20,7 +20,8 @@ Needs: pip install caldav icalendar recurring-ical-events
 from __future__ import annotations
 
 import asyncio
-from datetime import date, datetime, timedelta
+import os
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +32,30 @@ from elen.secrets import resolve_secret
 
 
 def local_tz():
+    """The system time zone as a real zone (with its summer/winter time rules).
+
+    `datetime.now().astimezone().tzinfo` is only today's fixed offset: an event after the next
+    time change would be one hour off. Order: $TZ, the /etc/localtime link, /etc/timezone.
+    """
+    from zoneinfo import ZoneInfo
+
+    names = [os.environ.get("TZ", "").lstrip(":")]
+    try:
+        link = os.path.realpath("/etc/localtime")
+        if "zoneinfo/" in link:
+            names.append(link.split("zoneinfo/", 1)[1])
+    except OSError:
+        pass
+    try:
+        names.append(Path("/etc/timezone").read_text().strip())
+    except OSError:
+        pass
+    for name in names:
+        if name:
+            try:
+                return ZoneInfo(name)
+            except (ValueError, OSError):
+                continue
     return datetime.now().astimezone().tzinfo
 
 
@@ -170,7 +195,8 @@ class CalendarPlugin(Plugin):
         out = []
         for comp in comps:
             d = event_dict(comp, src.get("name", "ics"))
-            if d and d["start_iso"] < end.isoformat() and d["end_iso"] > start.isoformat():
+            # Compare times, not ISO strings: "…T00:00+01:00" < "…T00:00:00+01:00" as strings.
+            if d and datetime.fromisoformat(d["start_iso"]) < end and datetime.fromisoformat(d["end_iso"]) > start:
                 out.append(d)
         return out
 
@@ -203,7 +229,7 @@ class CalendarPlugin(Plugin):
         end = start + timedelta(days=days)
         events, errors = await asyncio.to_thread(self._read_all, start, end)
         if days == 1:
-            title = "Today" if day == datetime.now().date() else day.strftime("%A")
+            title = "Today" if day == datetime.now(local_tz()).date() else day.strftime("%A")
             visual = {
                 "type": "calendar",
                 "title": title,
@@ -252,14 +278,19 @@ class CalendarPlugin(Plugin):
         if not srcs:
             return {"created": False, "error": "No writable CalDAV calendar is configured."}
         src = next((s for s in srcs if s.get("default")), srcs[0])
-        dt_start = datetime.fromisoformat(start).replace(tzinfo=None).astimezone(local_tz()) if "T" in start else None
-        dt_end = datetime.fromisoformat(end).replace(tzinfo=None).astimezone(local_tz()) if "T" in end else None
+        tz = local_tz()
+        dt_start = datetime.fromisoformat(start).replace(tzinfo=tz) if "T" in start else None
+        dt_end = datetime.fromisoformat(end).replace(tzinfo=tz) if "T" in end else None
         if not dt_start or not dt_end or dt_end <= dt_start:
             return {"created": False, "error": "start and end must be YYYY-MM-DDTHH:MM and end after start."}
 
         def save():
             cal = self._caldav_calendars(src)[0]
-            cal.save_event(dtstart=dt_start, dtend=dt_end, summary=title, location=location, description=description)
+            # Saved in UTC: a TZID without a VTIMEZONE can be read wrong by the server.
+            cal.save_event(
+                dtstart=dt_start.astimezone(timezone.utc), dtend=dt_end.astimezone(timezone.utc),
+                summary=title, location=location, description=description,
+            )
             return cal.name
 
         cal_name = await asyncio.to_thread(save)

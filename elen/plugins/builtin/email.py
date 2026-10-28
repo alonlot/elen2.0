@@ -17,6 +17,7 @@ drafts_folder = "Drafts"
 from __future__ import annotations
 
 import asyncio
+import base64
 import email
 import email.utils
 import imaplib
@@ -51,8 +52,29 @@ def body_text(msg: email.message.EmailMessage) -> str:
     return html_to_text(content) if part.get_content_type() == "text/html" else content.strip()
 
 
+def imap_utf7(name: str) -> str:
+    """Folder name in IMAP modified UTF-7 (RFC 3501 5.1.3): "Entwürfe" -> "Entw&APw-rfe".
+    imaplib sends ASCII only, so a non-ASCII name would raise UnicodeEncodeError."""
+    out, run = [], []
+
+    def close_run() -> None:
+        if run:
+            b64 = base64.b64encode("".join(run).encode("utf-16-be")).decode().rstrip("=")
+            out.append("&" + b64.replace("/", ",") + "-")
+            run.clear()
+
+    for ch in name:
+        if 0x20 <= ord(ch) <= 0x7E:
+            close_run()
+            out.append("&-" if ch == "&" else ch)
+        else:
+            run.append(ch)
+    close_run()
+    return "".join(out)
+
+
 def quote_folder(name: str) -> str:
-    return '"' + name.replace('"', '\\"') + '"'
+    return '"' + imap_utf7(name).replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
 class Account:
@@ -154,6 +176,7 @@ class EmailPlugin(Plugin):
 
     # -- sync helpers (run in a thread) --
     def _fetch_headers(self, acc: Account, folder: str, criteria: list[str], limit: int) -> list[dict]:
+        limit = max(1, min(int(limit or 10), 50))  # [-0:] would fetch the whole mailbox
         conn = acc.imap()
         try:
             conn.select(quote_folder(folder), readonly=True)
@@ -208,6 +231,7 @@ class EmailPlugin(Plugin):
                 "subject": str(msg.get("Subject", "")),
                 "date": str(msg.get("Date", "")),
                 "message_id": str(msg.get("Message-ID", "")),
+                "references": " ".join(str(msg.get("References", "")).split()),
                 "body": body_text(msg)[:20000],
                 "attachments": attachments,
             }
@@ -230,7 +254,8 @@ class EmailPlugin(Plugin):
             orig = self._fetch_full(acc, folder, reply_to_uid)
             if orig.get("message_id"):
                 msg["In-Reply-To"] = orig["message_id"]
-                msg["References"] = orig["message_id"]
+                # The whole thread, so mail apps keep the reply in it (RFC 5322 3.6.4).
+                msg["References"] = f"{orig.get('references', '')} {orig['message_id']}".strip()
         signature = acc.cfg.get("signature", "")
         msg.set_content(body + (f"\n\n{signature}" if signature else ""))
         return msg

@@ -16,6 +16,7 @@ SENTENCE_END = re.compile(r"[.!?…:;]\s|\n")
 
 def clean_for_speech(text: str, limit: int = 100000) -> str:
     text = re.sub(r"```.*?```", " ", text, flags=re.S)
+    text = re.sub(r"(?m)^\s*(?:[-•*+]|\d+[.)])\s+", "", text)  # list markers
     text = re.sub(r"https?://\S+", "a link", text)
     text = re.sub(r"[*_`#>|⚠ℹ]", "", text)
     text = re.sub(r"\s+", " ", text).strip()
@@ -31,6 +32,7 @@ class Speaker:
         self._buffer = ""
         self._budget = int(cfg.get("max_chars", 400))
         self._in_code = False
+        self._stopped = False  # set by stop(): the rest of this reply is not spoken
 
     @property
     def enabled(self) -> bool:
@@ -41,11 +43,12 @@ class Speaker:
         """Start a new reply: reset the length budget."""
         self._buffer = ""
         self._in_code = False
+        self._stopped = False
         self._budget = int(self.cfg.get("max_chars", 400))
 
     def feed(self, text: str) -> None:
         """Add streamed text. Each complete sentence is queued for speech."""
-        if not self.enabled:
+        if not self.enabled or self._stopped:
             return
         self._buffer += text
         while True:
@@ -56,7 +59,7 @@ class Speaker:
             self._queue_sentence(sentence)
 
     def flush(self) -> None:
-        if self._buffer.strip():
+        if self._buffer.strip() and not self._stopped:
             self._queue_sentence(self._buffer)
         self._buffer = ""
 
@@ -96,7 +99,8 @@ class Speaker:
         while True:
             sentence = await self._queue.get()
             try:
-                await self._speak_one(sentence)
+                if not self._stopped:
+                    await self._speak_one(sentence)
             except Exception:  # noqa: BLE001
                 pass
             finally:
@@ -105,6 +109,8 @@ class Speaker:
     async def _speak_one(self, text: str) -> None:
         template = self.cfg["command"]
         uses_arg = any("{text}" in part for part in template)
+        if uses_arg and text.startswith("-"):
+            text = " " + text  # "-5 degrees" must not be read as an option of the command
         cmd = [part.replace("{text}", text) for part in template]
         self._proc = await asyncio.create_subprocess_exec(
             *cmd,
@@ -119,8 +125,10 @@ class Speaker:
         await self._proc.wait()
 
     async def stop(self) -> None:
-        """Stop speaking now and forget queued sentences."""
+        """Stop speaking now, forget queued sentences, and ignore the rest of this reply
+        (the model can still be streaming it). begin() starts speaking again."""
         self._buffer = ""
+        self._stopped = True
         if self._queue is not None:
             while not self._queue.empty():
                 self._queue.get_nowait()

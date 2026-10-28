@@ -67,6 +67,17 @@ def to_openai_messages(system: str, messages: list[dict[str, Any]]) -> list[dict
     return out
 
 
+
+def parse_arguments(raw: Any) -> dict[str, Any]:
+    """Tool arguments as a dict: from a JSON string (the API standard) or an object (some servers)."""
+    if isinstance(raw, dict):
+        return raw
+    try:
+        value = json.loads(raw or "{}")
+    except (TypeError, ValueError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
 class OpenAICompatProvider:
     name = "openai"
 
@@ -139,10 +150,7 @@ class OpenAICompatProvider:
         calls = []
         for c in msg.get("tool_calls") or []:
             fn = c.get("function") or {}
-            try:
-                args = json.loads(fn.get("arguments") or "{}")
-            except json.JSONDecodeError:
-                args = {}
+            args = parse_arguments(fn.get("arguments"))
             calls.append(ToolCall(c.get("id") or fn.get("name", "call"), fn.get("name", ""), args))
         return LLMResponse(
             text=(msg.get("content") or "").strip(),
@@ -154,7 +162,8 @@ class OpenAICompatProvider:
     async def _stream(self, body, headers, on_text) -> LLMResponse:
         """Server-sent events: text pieces go to on_text, tool calls are put together."""
         text_parts: list[str] = []
-        calls: dict[int, dict[str, str]] = {}
+        calls: dict[int, dict[str, Any]] = {}
+        last_index = -1
         finish = ""
         try:
             async with httpx.AsyncClient(
@@ -183,23 +192,34 @@ class OpenAICompatProvider:
                             text_parts.append(delta["content"])
                             await emit_text(on_text, delta["content"])
                         for tc in delta.get("tool_calls") or []:
-                            cur = calls.setdefault(int(tc.get("index", 0)), {"id": "", "name": "", "args": ""})
+                            if tc.get("index") is not None:
+                                index = int(tc["index"])
+                            else:  # servers without "index": a new id starts a new call
+                                prev = calls.get(last_index)
+                                new = prev is None or (tc.get("id") and prev["id"] and tc["id"] != prev["id"])
+                                index = last_index + 1 if new else last_index
+                            last_index = max(last_index, index)
+                            cur = calls.setdefault(index, {"id": "", "name": "", "args": ""})
                             fn = tc.get("function") or {}
                             cur["id"] = tc.get("id") or cur["id"]
-                            if fn.get("name"):
-                                cur["name"] = fn["name"] if not cur["name"] else cur["name"] + fn["name"]
-                            cur["args"] += fn.get("arguments") or ""
+                            name = fn.get("name") or ""
+                            # Some servers repeat the full name in every chunk: do not double it.
+                            if name and not name.startswith(cur["name"]) and cur["name"] != name:
+                                cur["name"] += name
+                            elif name:
+                                cur["name"] = name
+                            piece = fn.get("arguments")
+                            if isinstance(piece, dict):
+                                cur["args"] = piece  # a server that sends the whole object
+                            elif piece and isinstance(cur["args"], str):
+                                cur["args"] += piece
                         finish = choice.get("finish_reason") or finish
         except httpx.HTTPError as e:
             raise LLMError(f"Cannot reach {self.base_url}: {e}") from e
         tool_calls = []
         for i in sorted(calls):
             c = calls[i]
-            try:
-                args = json.loads(c["args"] or "{}")
-            except json.JSONDecodeError:
-                args = {}
-            tool_calls.append(ToolCall(c["id"] or f"call_{i}", c["name"], args if isinstance(args, dict) else {}))
+            tool_calls.append(ToolCall(c["id"] or f"call_{i}", c["name"], parse_arguments(c["args"])))
         return LLMResponse(text="".join(text_parts).strip(), tool_calls=tool_calls, stop_reason=finish)
 
 

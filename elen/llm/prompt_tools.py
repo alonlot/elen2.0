@@ -28,7 +28,7 @@ no JSON block. Never invent tool results.
 Available tools:
 """
 
-BLOCK_RE = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.S)
+BLOCK_RE = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.S | re.I)
 
 
 def describe_tools(tools: list[dict[str, Any]]) -> str:
@@ -61,13 +61,32 @@ def to_plain_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return out
 
 
+def _bare_json(text: str) -> list[tuple[str, tuple[int, int]]]:
+    """JSON objects with "tool_calls" written without a ``` block, also after other text."""
+    out = []
+    decoder = json.JSONDecoder()
+    for m in re.finditer(r"\{\s*\"tool_calls\"", text):
+        try:
+            _, end = decoder.raw_decode(text, m.start())
+        except ValueError:
+            continue
+        out.append((text[m.start() : end], (m.start(), end)))
+    return out
+
+
+def _arguments(raw: Any) -> dict[str, Any]:
+    if isinstance(raw, str):  # the OpenAI style: arguments as a JSON string
+        try:
+            raw = json.loads(raw)
+        except ValueError:
+            return {}
+    return raw if isinstance(raw, dict) else {}
+
+
 def parse_tool_calls(text: str, known: set[str]) -> tuple[str, list[ToolCall]]:
     """Return (text without the JSON block, tool calls)."""
-    candidates = [m.group(1) for m in BLOCK_RE.finditer(text)]
-    stripped = text.strip()
-    if not candidates and stripped.startswith("{") and '"tool_calls"' in stripped:
-        candidates = [stripped]
-    for raw in candidates:
+    candidates = [(m.group(1), m.span()) for m in BLOCK_RE.finditer(text)] or _bare_json(text)
+    for raw, (start, end) in candidates:
         try:
             data = json.loads(raw)
         except ValueError:
@@ -78,11 +97,10 @@ def parse_tool_calls(text: str, known: set[str]) -> tuple[str, list[ToolCall]]:
         calls = []
         for c in calls_data:
             if isinstance(c, dict) and c.get("name"):
-                args = c.get("arguments") or {}
-                calls.append(ToolCall(f"call_{uuid.uuid4().hex[:8]}", str(c["name"]), args if isinstance(args, dict) else {}))
+                calls.append(ToolCall(f"call_{uuid.uuid4().hex[:8]}", str(c["name"]), _arguments(c.get("arguments"))))
         if calls:
-            rest = BLOCK_RE.sub("", text).strip() if raw != stripped else ""
-            return rest, calls
+            rest = (text[:start] + text[end:]).strip()
+            return BLOCK_RE.sub("", rest).strip(), calls
     return text.strip(), []
 
 

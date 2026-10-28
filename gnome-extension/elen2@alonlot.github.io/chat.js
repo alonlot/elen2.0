@@ -37,6 +37,9 @@ class ElenIndicator extends PanelMenu.Button {
         this._ids = new Set();
         this._state = 'offline';
         this._live = null;
+        this._focusId = 0;
+        this._scrollId = 0;
+        this._destroyed = false;  // D-Bus answers can arrive after destroy()
 
         const box = new St.BoxLayout({style_class: 'elen-panel-box'});
         this._orb = new Orb(18, 'offline');
@@ -145,21 +148,33 @@ class ElenIndicator extends PanelMenu.Button {
 
     _onOpen() {
         this.reloadHistory();
-        GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
-            global.stage.set_key_focus(this._entry);
-            return GLib.SOURCE_REMOVE;
-        });
+        if (!this._focusId) {
+            this._focusId = GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+                this._focusId = 0;
+                global.stage.set_key_focus(this._entry);
+                return GLib.SOURCE_REMOVE;
+            });
+        }
     }
 
     reloadHistory() {
         this._client.call('GetHistory').then(json => {
+            if (this._destroyed)
+                return;
+            // A reply that is being written is not in the history yet: keep its text.
+            const live = this._live;
             this._live = null;
             this._messages.destroy_all_children();
             this._ids.clear();
             for (const m of JSON.parse(json))
                 this.addMessage(m, false);
+            if (live)
+                this.addDelta(live.id, live.text);
             this._scrollToEnd();
-        }).catch(() => this._showOffline());
+        }).catch(() => {
+            if (!this._destroyed)
+                this._showOffline();
+        });
     }
 
     _showOffline() {
@@ -194,6 +209,8 @@ class ElenIndicator extends PanelMenu.Button {
 
     toggleWake() {
         this._client.call('ToggleWake').then(json => {
+            if (this._destroyed)
+                return;
             const state = JSON.parse(json);
             this.setWakeState(state);
             if (state.error)
@@ -244,7 +261,7 @@ class ElenIndicator extends PanelMenu.Button {
             button.connect('clicked', () => {
                 this.menu.close();
                 this._client.call('ShowVisual', [v.id]).then(ok => {
-                    if (!ok)
+                    if (!ok && !this._destroyed)
                         this._addLabel('This visualization is no longer saved.', 'elen-msg activity', '· ');
                 }).catch(() => {});
             });
@@ -268,7 +285,10 @@ class ElenIndicator extends PanelMenu.Button {
     }
 
     _scrollToEnd() {
-        GLib.timeout_add(GLib.PRIORITY_DEFAULT, 60, () => {
+        if (this._scrollId)
+            return;  // one pending scroll is enough (deltas come many times a second)
+        this._scrollId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 60, () => {
+            this._scrollId = 0;
             const adj = this._scroll.vadjustment ?? this._scroll.get_vscroll_bar?.()?.get_adjustment();
             if (adj)
                 adj.value = adj.upper - adj.page_size;
@@ -282,7 +302,8 @@ class ElenIndicator extends PanelMenu.Button {
             return;
         this._entry.set_text('');
         this._client.call('SendMessage', [text]).catch(e => {
-            this._addLabel(`Could not reach the Elen daemon: ${e.message}`, 'elen-msg elen error');
+            if (!this._destroyed)
+                this._addLabel(`Could not reach the Elen daemon: ${e.message}`, 'elen-msg elen error');
         });
     }
 
@@ -295,7 +316,8 @@ class ElenIndicator extends PanelMenu.Button {
 
     toggleListening() {
         this._client.call('ToggleListening').catch(e => {
-            this._addLabel(`Voice input failed: ${e.message}`, 'elen-msg elen error');
+            if (!this._destroyed)
+                this._addLabel(`Voice input failed: ${e.message}`, 'elen-msg elen error');
         });
     }
 
@@ -329,6 +351,12 @@ class ElenIndicator extends PanelMenu.Button {
     }
 
     destroy() {
+        this._destroyed = true;
+        for (const id of [this._focusId, this._scrollId]) {
+            if (id)
+                GLib.source_remove(id);
+        }
+        this._focusId = this._scrollId = 0;
         this._orb?.destroy();
         this._orb = null;
         super.destroy();

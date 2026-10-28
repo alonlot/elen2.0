@@ -5,7 +5,7 @@ from elen.guard import scope_value
 
 
 def test_scope_value():
-    assert scope_value("https://www.YouTube.com/watch?v=1") == "youtube.com"
+    assert scope_value("https://www.YouTube.com/watch?v=1") == "https://youtube.com"
     assert scope_value("Dana@Example.com, bob@x.io") == "bob@x.io, dana@example.com"
     assert scope_value("Firefox") == "firefox"
 

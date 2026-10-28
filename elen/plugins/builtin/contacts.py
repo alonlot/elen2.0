@@ -7,6 +7,7 @@ Sources:
 
 from __future__ import annotations
 
+import json
 import re
 import sys
 from pathlib import Path
@@ -34,7 +35,9 @@ def parse_vcf(text: str) -> list[dict[str, Any]]:
             cur = None
         elif cur is not None and ":" in line:
             key, value = line.split(":", 1)
-            key = key.split(";")[0].upper()
+            # "item1.EMAIL;type=INTERNET" (Apple / iCloud groups) counts as EMAIL.
+            key = key.split(";")[0].rsplit(".", 1)[-1].upper()
+            value = re.sub(r"\\([,;\\])", r"\1", value).replace("\\n", " ")  # vCard escapes
             if key == "FN":
                 cur["name"] = value.strip()
             elif key == "EMAIL":
@@ -141,10 +144,15 @@ class ContactsPlugin(Plugin):
     )
     async def add_contact(self, name: str, emails: list | None = None, phones: list | None = None):
         def q(s: str) -> str:
-            return '"' + str(s).replace("\\", "\\\\").replace('"', '\\"') + '"'
+            return json.dumps(str(s), ensure_ascii=False)  # a valid TOML string, also with newlines
 
-        emails = [e for e in (emails or []) if e] if isinstance(emails, list) else [str(emails)]
-        phones = [p for p in (phones or []) if p] if isinstance(phones, list) else [str(phones)]
+        def as_list(value: Any) -> list[str]:
+            if not value:
+                return []  # not ["None"]
+            items = value if isinstance(value, list) else str(value).split(",")
+            return [str(v).strip() for v in items if str(v).strip()]
+
+        emails, phones = as_list(emails), as_list(phones)
         block = (
             f"\n[[contact]]\nname = {q(name)}\n"
             f"emails = [{', '.join(q(e) for e in emails)}]\n"

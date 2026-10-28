@@ -16,6 +16,7 @@ clear them.
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 import uuid
@@ -37,10 +38,19 @@ class MemoryPlugin(Plugin):
 
     async def setup(self) -> None:
         self.path = self.ctx.data_dir / "memories.json"
+        self.items: list[dict[str, Any]] = []
         try:
-            self.items: list[dict[str, Any]] = json.loads(self.path.read_text())
-        except (OSError, ValueError):
-            self.items = []
+            self.items = json.loads(self.path.read_text())
+        except FileNotFoundError:
+            pass
+        except (OSError, ValueError) as e:
+            # Do not start empty over a damaged file: the next save would delete every rule.
+            backup = self.path.with_name(f"memories.json.damaged-{time.strftime('%Y%m%d-%H%M%S')}")
+            try:
+                self.path.replace(backup)
+            except OSError:
+                raise RuntimeError(f"{self.path} cannot be read ({e}) and cannot be moved away") from e
+            self.log.error("%s cannot be read (%s). It was moved to %s; memory starts empty.", self.path, e, backup)
         for item in self.items:
             item.setdefault("kind", "fact")
         # Search by meaning: [plugins.memory] embeddings = {model, base_url, api_key}.
@@ -60,7 +70,10 @@ class MemoryPlugin(Plugin):
 
     def _save(self) -> None:
         tmp = self.path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(self.items, ensure_ascii=False, indent=1))
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(json.dumps(self.items, ensure_ascii=False, indent=1))
+            f.flush()
+            os.fsync(f.fileno())  # a crash must not leave an empty file behind
         tmp.chmod(0o600)
         tmp.replace(self.path)
 
@@ -191,6 +204,7 @@ class MemoryPlugin(Plugin):
         required=["id"],
         risk="write",
         title="Delete permanent rule",
+        allow_scope=False,  # deleting a rule always opens the approval dialog
     )
     async def delete_rule(self, id: str, text: str = ""):
         item = next((m for m in self.rules() if m["id"] == id), None)

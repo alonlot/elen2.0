@@ -6,11 +6,12 @@ Used by the settings window (through D-Bus) and by `elen set`.
 from __future__ import annotations
 
 import json
+import os
 import re
 from pathlib import Path
 from typing import Any
 
-from .config import config_path, ensure_user_config, load_config
+from .config import config_path, ensure_user_config, load_config, tomllib
 
 LLM_KEYS = ("provider", "model", "base_url", "api_key", "tool_mode", "effort")
 MODEL_SECTIONS = {
@@ -50,39 +51,75 @@ def toml_value(value: Any) -> str:
     if isinstance(value, (int, float)):
         return str(value)
     if isinstance(value, list):
-        return json.dumps(value, ensure_ascii=False)
+        return "[" + ", ".join(toml_value(v) for v in value) + "]"
+    if isinstance(value, dict):
+        return "{" + ", ".join(f"{json.dumps(str(k))} = {toml_value(v)}" for k, v in value.items()) + "}"
     return json.dumps(str(value), ensure_ascii=False)
 
 
+def _open_brackets(text: str) -> int:
+    """'[' and '{' minus ']' and '}' outside strings and comments."""
+    depth, quote, i = 0, "", 0
+    while i < len(text):
+        ch = text[i]
+        if quote:
+            if ch == "\\" and quote == '"':
+                i += 1
+            elif ch == quote:
+                quote = ""
+        elif ch in "\"'":
+            quote = ch
+        elif ch == "#":
+            break
+        elif ch in "[{":
+            depth += 1
+        elif ch in "]}":
+            depth -= 1
+        i += 1
+    return depth
+
+
 def set_values(section: str, values: dict[str, Any], path: Path | None = None) -> Path:
+    """Set keys in one [section]. The file is written only if the result is valid TOML."""
     path = path or ensure_user_config()
     lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
-    header = f"[{section}]"
-    start = next((i for i, line in enumerate(lines) if line.strip() == header), None)
+    header = re.compile(r"\s*\[" + re.escape(section) + r"\]\s*(#.*)?$")  # a comment may follow
+    start = next((i for i, line in enumerate(lines) if header.match(line)), None)
     if start is None:
-        lines += ["", header] + [f"{k} = {toml_value(v)}" for k, v in values.items()]
+        lines += ["", f"[{section}]"] + [f"{k} = {toml_value(v)}" for k, v in values.items()]
     else:
         end = next(
             (i for i in range(start + 1, len(lines)) if re.match(r"\s*\[", lines[i])),
             len(lines),
         )
         missing = dict(values)
-        for i in range(start + 1, end):
+        i = start + 1
+        while i < end:
             m = re.match(r"\s*([A-Za-z0-9_]+)\s*=", lines[i])
             if m and m.group(1) in missing:
+                # A value over several lines (an array): remove its other lines too.
+                last, depth = i, _open_brackets(lines[i].split("=", 1)[1])
+                while depth > 0 and last + 1 < len(lines):
+                    last += 1
+                    depth += _open_brackets(lines[last])
                 comment = ""
-                cm = re.search(r"\s+#[^\"']*$", lines[i])
+                cm = re.search(r"\s+#[^\"']*$", lines[last])
                 if cm:
                     comment = cm.group(0)
-                lines[i] = f"{m.group(1)} = {toml_value(missing.pop(m.group(1)))}{comment}"
+                lines[i : last + 1] = [f"{m.group(1)} = {toml_value(missing.pop(m.group(1)))}{comment}"]
+                end -= last - i
+            i += 1
         if missing:
             insert_at = end
             while insert_at > start + 1 and not lines[insert_at - 1].strip():
                 insert_at -= 1
             lines[insert_at:insert_at] = [f"{k} = {toml_value(v)}" for k, v in missing.items()]
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    path.chmod(0o600)
-    load_config(path)  # raises if the result is not valid TOML
+    text = "\n".join(lines) + "\n"
+    tomllib.loads(text)  # raises before the file is touched if the result is not valid TOML
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    tmp.chmod(0o600)
+    os.replace(tmp, path)
     return path
 
 

@@ -78,8 +78,10 @@ can leak data, even if it only reads. Give it at least `risk="low"`, never `read
 
 **Allow scope.** "Don't ask again" makes an allow rule for one kind of action. By default
 the scope is the recipient args (a rule per person), or the whole tool when it has none. Set
-`allow_scope=["target"]` to scope by an argument; URLs count by their domain. Dangerous tools
-never get allow rules.
+`allow_scope=["target"]` to scope by an argument; URLs count by their scheme and domain
+(`https://youtube.com`; http and https are the same), a URL without a domain (`file:///...`)
+counts only as itself. Set `allow_scope=False` for a tool that must always ask. Dangerous
+tools never get allow rules.
 
 **Recipients.** If the tool sends something to a person (mail, chat message, SMS, a call),
 list the argument in `recipients=[...]`. The guard then labels each address or number in

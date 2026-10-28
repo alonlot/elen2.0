@@ -180,6 +180,7 @@ export class ConfirmManager {
         this._queue = [];
         this._dialog = null;
         this._currentId = null;
+        this._retryId = 0;
     }
 
     add(conf) {
@@ -215,17 +216,32 @@ export class ConfirmManager {
             this._dialog = null;
             this._queue.unshift(conf);
             this._currentId = null;
-            GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 2, () => {
-                this._next();
-                return GLib.SOURCE_REMOVE;
-            });
+            if (!this._retryId) {
+                this._retryId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 2, () => {
+                    this._retryId = 0;
+                    this._next();
+                    return GLib.SOURCE_REMOVE;
+                });
+            }
         }
     }
 
-    destroy() {
+    // Close every dialog without an answer. Used when the daemon goes away: its approvals
+    // are gone with it, and an Approve press would do nothing. The new daemon process sends
+    // the ones that are still open (PendingConfirmations).
+    clear() {
         this._queue = [];
         if (this._dialog)
             this._dialog.dismiss();
         this._dialog = null;
+        this._currentId = null;
+    }
+
+    destroy() {
+        if (this._retryId) {
+            GLib.source_remove(this._retryId);
+            this._retryId = 0;
+        }
+        this.clear();
     }
 }

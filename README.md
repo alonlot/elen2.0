@@ -194,9 +194,10 @@ does, not only what the prompt asks:
    after outside content enters the conversation, **every** action needs your approval, also
    small ones such as opening a link, and the dialog says why.
 9. **"Don't ask again", narrow and safe.** The approval dialog can offer a check box such as
-   "Don't ask again for: Open link: target = youtube.com". A rule covers only that exact kind of
-   action: a link counts by its domain, an email by its recipient. Dangerous actions (shell,
-   Claude Code) never get this option. A rule never applies when the dialog would show a
+   "Don't ask again for: Open link: target = https://youtube.com". A rule covers only that
+   exact kind of action: a link counts by its scheme and domain, a file link only as itself,
+   an email by its real address (the part in `<...>`, not the display name). Dangerous actions
+   (shell, Claude Code) and deleting a permanent rule never get this option. A rule never applies when the dialog would show a
    warning: an unverified recipient, a conflict with your permanent rules, or, for rules that
    cover a whole tool, outside content read in the conversation. Only you can create a rule (in
    the dialog). "Show my allow rules" lists them; Elen can remove one on request. Fewer dialogs

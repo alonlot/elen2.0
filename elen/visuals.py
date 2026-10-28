@@ -21,9 +21,20 @@ def _s(value: Any, limit: int = 400) -> str:
     return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
+def _list(value: Any) -> list:
+    """A list from whatever a model wrote: a list, one value, or a {label: value} dict."""
+    if value is None or value == "":
+        return []
+    if isinstance(value, (list, tuple)):
+        return list(value)
+    if isinstance(value, dict):
+        return [{"label": k, "value": v} for k, v in value.items()]
+    return [value]
+
+
 def _items(items: Any, keys: tuple[str, ...], limits: dict[str, int] | None = None) -> list[dict]:
     out = []
-    for item in (items or [])[:MAX_ITEMS]:
+    for item in _list(items)[:MAX_ITEMS]:
         if not isinstance(item, dict):
             item = {keys[0]: item}
         clean = {}
@@ -79,16 +90,16 @@ def normalise(spec: dict[str, Any], default_seconds: int = 25, depth: int = 0) -
     elif kind == "card":
         out["image"] = _s(spec.get("image"), 500)
         out["fields"] = _items(spec.get("fields"), ("label", "value"))
-        out["tags"] = [_s(t, 40) for t in (spec.get("tags") or [])[:12]]
+        out["tags"] = [_s(t, 40) for t in _list(spec.get("tags"))[:12]]
         out["body"] = _s(spec.get("body"), 2000)
     elif kind == "chart":
         out["kind"] = spec.get("kind") if spec.get("kind") in ("bar", "line") else "bar"
         out["unit"] = _s(spec.get("unit"), 20)
-        labels = [_s(x, 30) for x in (spec.get("labels") or [])[:MAX_ITEMS]]
+        labels = [_s(x, 30) for x in _list(spec.get("labels"))[:MAX_ITEMS]]
         series = []
-        for ser in (spec.get("series") or [])[:4]:
+        for ser in _list(spec.get("series"))[:4]:
             if isinstance(ser, dict):
-                values = [_number(v) for v in (ser.get("values") or [])[: len(labels) or MAX_ITEMS]]
+                values = [_number(v) for v in _list(ser.get("values"))[: len(labels) or MAX_ITEMS]]
                 series.append({"name": _s(ser.get("name"), 40), "values": values})
         out["labels"], out["series"] = labels, series
     elif kind == "timeline":
@@ -104,8 +115,11 @@ def normalise(spec: dict[str, Any], default_seconds: int = 25, depth: int = 0) -
     elif kind == "stats":
         out["items"] = _items(spec.get("items"), ("label", "value", "unit", "percent"))
     elif kind == "table":
-        cols = [_s(c, 60) for c in (spec.get("columns") or [])][:8]
-        rows = [[_s(c, 120) for c in (r or [])][: len(cols) or 8] for r in (spec.get("rows") or [])[:MAX_ITEMS]]
+        cols = [_s(c, 60) for c in _list(spec.get("columns"))][:8]
+        rows = []
+        for r in _list(spec.get("rows"))[:MAX_ITEMS]:
+            cells = list(r.values()) if isinstance(r, dict) else _list(r)
+            rows.append([_s(c, 120) for c in cells][: len(cols) or 8])
         out["columns"], out["rows"] = cols, rows
     elif kind == "text":
         out["body"] = _s(spec.get("body") or spec.get("text"), 4000)
@@ -118,7 +132,7 @@ def normalise(spec: dict[str, Any], default_seconds: int = 25, depth: int = 0) -
         out["caption"] = _s(spec.get("caption"), 300)
     elif kind == "panels":
         out["panels"] = (
-            [normalise(p, default_seconds, depth + 1) for p in (spec.get("panels") or [])[:4]]
+            [normalise(p, default_seconds, depth + 1) for p in _list(spec.get("panels"))[:4]]
             if depth == 0
             else []
         )

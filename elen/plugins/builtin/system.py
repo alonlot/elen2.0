@@ -6,6 +6,7 @@ import asyncio
 import configparser
 import os
 import shutil
+import signal
 from datetime import datetime
 from pathlib import Path
 
@@ -42,18 +43,35 @@ def find_desktop_apps() -> dict[str, str]:
     return apps
 
 
-async def run(cmd: list[str], timeout: float = 20) -> tuple[int, str]:
+async def kill_group(proc: asyncio.subprocess.Process) -> None:
+    """Kill a process started with start_new_session=True and everything it started
+    (`bash -lc "a | b"`, the commands Claude Code runs). proc.kill() stops only the first one."""
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        pass
+    try:
+        await asyncio.wait_for(proc.wait(), 5)
+    except (asyncio.TimeoutError, asyncio.CancelledError):
+        pass
+
+
+async def run(cmd: list[str], timeout: float = 20, group: bool = False) -> tuple[int, str]:
+    """group=True: on timeout or Stop, kill everything the command started. Not for launchers
+    (gtk-launch, xdg-open): that would also close the app they opened."""
     proc = await asyncio.create_subprocess_exec(
-        *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT
+        *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT, start_new_session=group
     )
     try:
         out, _ = await asyncio.wait_for(proc.communicate(), timeout)
-    except asyncio.TimeoutError:
-        proc.kill()
+    except (asyncio.TimeoutError, asyncio.CancelledError) as e:  # timeout, or the user pressed Stop
+        if group:
+            await kill_group(proc)
+        else:
+            proc.kill()
+        if isinstance(e, asyncio.CancelledError):
+            raise
         return 124, "timed out"
-    except asyncio.CancelledError:  # the user pressed Stop
-        proc.kill()
-        raise
     return proc.returncode or 0, out.decode(errors="replace")
 
 
@@ -171,5 +189,5 @@ class SystemPlugin(Plugin):
     )
     async def run_command(self, command: str, reason: str = ""):
         timeout = float(self.config.get("command_timeout", 120))
-        code, out = await run(["bash", "-lc", command], timeout)
+        code, out = await run(["bash", "-lc", command], timeout, group=True)
         return {"exit_code": code, "output": out[-8000:]}

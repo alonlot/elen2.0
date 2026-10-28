@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Any
 
 from elen.plugins import Plugin, ToolResult, tool
+from elen.plugins.builtin.system import kill_group
 from elen.secrets import resolve_secret
 
 # Variables of a parent Claude Code session must not leak into the child.
@@ -70,11 +71,14 @@ class ClaudeCodePlugin(Plugin):
             env["ANTHROPIC_API_KEY"] = key
         return env
 
-    def _last_session(self) -> str:
+    def _last_session(self) -> tuple[str, str]:
+        """(session id, folder) of the last task. Claude Code keeps sessions per folder, so a
+        resume must run in the same folder."""
         try:
-            return json.loads(self.state_file.read_text()).get("session_id", "")
-        except (OSError, ValueError):
-            return ""
+            data = json.loads(self.state_file.read_text())
+            return data.get("session_id", ""), data.get("cwd", "")
+        except (OSError, ValueError, AttributeError):
+            return "", ""
 
     @tool(
         "Give a task to Claude Code, an agent that reads and edits files and runs commands on "
@@ -91,7 +95,8 @@ class ClaudeCodePlugin(Plugin):
         untrusted=True,
     )
     async def run_task(self, task: str, workdir: str = "", continue_previous: bool = False):
-        cwd = Path(os.path.expanduser(workdir or self.config.get("workdir", "~")))
+        session, session_cwd = self._last_session() if continue_previous else ("", "")
+        cwd = Path(os.path.expanduser(workdir or session_cwd or self.config.get("workdir", "~")))
         if not cwd.is_dir():
             return {"ok": False, "error": f"Folder {cwd} does not exist."}
         cmd = [self.binary, "-p", "--output-format", "stream-json", "--verbose"]
@@ -99,7 +104,6 @@ class ClaudeCodePlugin(Plugin):
             cmd.append("--dangerously-skip-permissions")
         if self.config.get("model"):
             cmd += ["--model", str(self.config["model"])]
-        session = self._last_session() if continue_previous else ""
         if session:
             cmd += ["--resume", session]
         cmd += [str(a) for a in self.config.get("extra_args", [])]
@@ -113,6 +117,7 @@ class ClaudeCodePlugin(Plugin):
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             limit=16 * 1024 * 1024,
+            start_new_session=True,  # Stop kills the commands it runs too
         )
         proc.stdin.write(task.encode())
         await proc.stdin.drain()
@@ -120,6 +125,13 @@ class ClaudeCodePlugin(Plugin):
 
         result: dict[str, Any] = {}
         steps: list[str] = []
+        errors = bytearray()
+
+        async def read_stderr() -> None:
+            # Read all the time: a full stderr pipe would block Claude Code.
+            async for line in proc.stderr:
+                errors.extend(line)
+                del errors[: max(0, len(errors) - 8000)]
 
         async def read() -> None:
             async for raw in proc.stdout:
@@ -136,21 +148,24 @@ class ClaudeCodePlugin(Plugin):
                 elif ev.get("type") == "result":
                     result.update(ev)
 
+        stderr_task = asyncio.ensure_future(read_stderr())
         try:
             await asyncio.wait_for(read(), float(self.config.get("timeout", 900)))
             await asyncio.wait_for(proc.wait(), 10)
         except asyncio.TimeoutError:
-            proc.kill()
+            await kill_group(proc)
             return {"ok": False, "error": "Claude Code timed out and was stopped.", "steps": steps[-30:]}
         except asyncio.CancelledError:  # the user pressed Stop
-            proc.kill()
+            await kill_group(proc)
             raise
+        finally:
+            stderr_task.cancel()
 
         if not result:
-            err = (await proc.stderr.read()).decode(errors="replace")
+            err = errors.decode(errors="replace")
             return {"ok": False, "error": f"Claude Code stopped without a result: {err[-2000:]}", "steps": steps[-30:]}
         if result.get("session_id"):
-            self.state_file.write_text(json.dumps({"session_id": result["session_id"]}))
+            self.state_file.write_text(json.dumps({"session_id": result["session_id"], "cwd": str(cwd)}))
         ok = not result.get("is_error") and result.get("subtype") in (None, "success")
         report = str(result.get("result") or "").strip()
         data = {"ok": ok, "report": report[-12000:], "steps": steps[-30:], "step_count": len(steps)}

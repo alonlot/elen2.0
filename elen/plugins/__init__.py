@@ -83,7 +83,7 @@ class ToolSpec:
     func: Callable[..., Awaitable[Any]]
     title: str = ""
     untrusted: bool = False
-    allow_scope: tuple[str, ...] | None = None
+    allow_scope: tuple[str, ...] | bool | None = None
 
     @property
     def full_name(self) -> str:
@@ -122,7 +122,7 @@ def tool(
     name: str | None = None,
     title: str = "",
     untrusted: bool = False,
-    allow_scope: tuple[str, ...] | list[str] | None = None,
+    allow_scope: tuple[str, ...] | list[str] | bool | None = None,
 ):
     """Mark a plugin method as a tool the assistant can call.
 
@@ -137,8 +137,8 @@ def tool(
                 (prompt injection), so after it every action needs approval.
     allow_scope args that define "the same action" for "Approve and don't ask
                 again". A URL counts by its domain. Default: the recipient args,
-                or the whole tool when it has none. Dangerous tools never get
-                an allow rule.
+                or the whole tool when it has none. False = never offer an allow
+                rule for this tool. Dangerous tools never get an allow rule.
     """
     if risk not in RISK_LEVELS:
         raise ValueError(f"risk must be one of {RISK_LEVELS}")
@@ -154,7 +154,7 @@ def tool(
             "name": name or func.__name__,
             "title": title,
             "untrusted": untrusted,
-            "allow_scope": tuple(allow_scope) if allow_scope is not None else None,
+            "allow_scope": allow_scope if isinstance(allow_scope, bool) or allow_scope is None else tuple(allow_scope),
         }
         return func
 

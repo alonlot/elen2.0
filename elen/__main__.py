@@ -25,7 +25,7 @@ def main() -> None:
     argv = sys.argv[1:]
     cmd = argv[0] if argv else "daemon"
     logging.basicConfig(
-        level=os.environ.get("ELEN_LOG", "INFO"),
+        level=os.environ.get("ELEN_LOG", "INFO").upper(),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
     if cmd == "daemon":

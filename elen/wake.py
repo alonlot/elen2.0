@@ -63,6 +63,10 @@ class VoskEngine:
         self.rec = self._make()
         self.rec.SetWords(True)
         self._audio = bytearray()  # audio of the current utterance
+        # Vosk word times count from when the recognizer was made, not from the utterance:
+        # bytes fed to this recognizer, and the position of _audio[0] in that stream.
+        self._fed = 0
+        self._audio_at = 0
         self.tail = b""  # audio said right after the wake phrase, in the same breath
 
     def _first_phrase(self, words: list[dict]) -> list[dict] | None:
@@ -85,11 +89,15 @@ class VoskEngine:
 
     def process(self, chunk: bytes) -> bool:
         self._audio.extend(chunk)
+        self._fed += len(chunk)
         if len(self._audio) > RATE * 2 * 30:  # keep at most 30 s
-            del self._audio[: len(self._audio) - RATE * 2 * 30]
+            drop = len(self._audio) - RATE * 2 * 30
+            del self._audio[:drop]
+            self._audio_at += drop
         if self.rec.AcceptWaveform(chunk):
             result = json.loads(self.rec.Result())
-            audio, self._audio = bytes(self._audio), bytearray()
+            audio, audio_at = bytes(self._audio), self._audio_at
+            self._audio, self._audio_at = bytearray(), self._fed
             if not self._hit(result.get("text", "")):
                 return False
             words = result.get("result") or []
@@ -98,7 +106,8 @@ class VoskEngine:
                 return False
             # "Hey Ellen, open my calendar" in one breath: keep the audio after the phrase.
             end = match[-1].get("end", 0)
-            self.tail = audio[int(end * RATE) * 2:] if words[-1].get("end", 0) - end > 0.3 else b""
+            cut = max(0, int(end * RATE) * 2 - audio_at)
+            self.tail = audio[cut:] if words[-1].get("end", 0) - end > 0.3 else b""
             return True
         if self.use_partial:
             # Faster: react while the user is still speaking. A little less strict.
@@ -109,6 +118,7 @@ class VoskEngine:
         self.rec = self._make()
         self.rec.SetWords(True)
         self._audio = bytearray()
+        self._fed = self._audio_at = 0
         self.tail = b""
 
 
