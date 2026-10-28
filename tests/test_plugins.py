@@ -1,6 +1,6 @@
 import textwrap
 
-from elen.plugins import Plugin, PluginContext, tool
+from elen.plugins import Plugin, tool
 from elen.plugins.builtin.contacts import parse_vcf
 from elen.visuals import normalise
 

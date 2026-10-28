@@ -277,3 +277,107 @@ async def test_damaged_memory_file_is_kept(make_core, env):
     assert memory.items == []
     backups = list(memory.path.parent.glob("memories.json.damaged-*"))
     assert backups and "never" in backups[0].read_text()
+
+
+# ----- second review ---------------------------------------------------------
+async def test_vision_with_another_provider_does_not_get_the_brain_key(make_core):
+    core = await make_core(
+        [],
+        brain={"provider": "openai_compatible", "base_url": "http://gw/v1", "api_key": "sk-brain", "model": "big"},
+        vision={"provider": "anthropic", "model": "claude-x"},
+    )
+    cfg = core.model_config("vision")
+    assert cfg["provider"] == "anthropic" and cfg["model"] == "claude-x"
+    assert "api_key" not in cfg and "base_url" not in cfg  # the brain's key is for another API
+    same = await make_core([], brain={"provider": "openai_compatible", "base_url": "http://gw/v1", "api_key": "k"},
+                           vision={"provider": "openai_compatible", "model": "vl"})
+    assert same.model_config("vision")["base_url"] == "http://gw/v1"  # same API: the URL is shared
+
+
+def test_string_arguments_are_coerced_to_the_schema_type():
+    from elen.core import coerce_arg
+
+    assert coerce_arg("false", {"type": "boolean"}) is False
+    assert coerce_arg("True", {"type": "boolean"}) is True
+    assert coerce_arg("10", {"type": "integer"}) == 10 and coerce_arg(3.0, {"type": "integer"}) == 3
+    assert coerce_arg("1.5", {"type": "number"}) == 1.5
+    assert coerce_arg("a@x.com, b@y.com", {"type": "array"}) == ["a@x.com", "b@y.com"]
+    assert coerce_arg("maybe", {"type": "boolean"}) == "maybe"  # left to the tool
+    assert coerce_arg(True, {"type": "integer"}) is True
+
+
+async def test_unread_only_false_as_text_lists_all_mail(make_core):
+    from elen.plugins import Plugin, tool
+
+    got = {}
+
+    class Mail(Plugin):
+        name = "m"
+
+        @tool("List.", params={"unread_only": "boolean: only unread", "limit": "integer: how many"})
+        async def list(self, unread_only: bool = False, limit: int = 10):
+            got.update(unread_only=unread_only, limit=limit)
+            return {}
+
+    core = await make_core([call("m__list", unread_only="false", limit="5"), say("ok")])
+    add_plugin(core, Mail)
+    await core.ask("mail")
+    assert got == {"unread_only": False, "limit": 5}
+
+
+async def test_missing_recorder_does_not_leave_the_mic_busy(tmp_path):
+    from elen.stt import Recorder
+
+    rec = Recorder({"record_command": ["/nonexistent/recorder"]})
+    with pytest.raises(OSError):
+        await rec.record(tmp_path / "a.wav")
+    assert rec.active is False
+
+
+def test_calendar_keeps_an_explicit_offset(monkeypatch):
+    from datetime import datetime
+
+    from elen.plugins.builtin.calendar import CalendarPlugin
+
+    monkeypatch.setenv("TZ", "Europe/Berlin")
+    plugin = CalendarPlugin.__new__(CalendarPlugin)
+    plugin.sources = [{"name": "c", "type": "caldav", "url": "http://x"}]
+    saved = {}
+
+    def fake(src):
+        class Cal:
+            name = "main"
+
+            def save_event(self, **kw):
+                saved.update(kw)
+
+        return [Cal()]
+
+    plugin._caldav_calendars = fake
+    result = asyncio.run(plugin.create_event("t", "2027-01-05T10:00+00:00", "2027-01-05T11:00+00:00"))
+    assert result["created"] and saved["dtstart"].hour == 10  # 10:00 UTC stays 10:00 UTC
+    result = asyncio.run(plugin.create_event("t", "2027-01-05T10:00", "2027-01-05T11:00"))
+    assert saved["dtstart"].hour == 9  # 10:00 Berlin winter time = 09:00 UTC
+    assert datetime.fromisoformat(result["start"]).utcoffset().total_seconds() == 3600
+    assert not asyncio.run(plugin.create_event("t", "2027-01-05", "2027-01-06"))["created"]
+
+
+def test_email_recipients_may_be_a_list():
+    from elen.plugins.builtin.email import Account, EmailPlugin, addresses
+
+    assert addresses(["a@x.com", " b@y.com "]) == "a@x.com, b@y.com" and addresses(None) == ""
+    plugin = EmailPlugin.__new__(EmailPlugin)
+    msg = plugin._build(Account({"address": "me@x.io"}), ["a@x.com", "b@y.com"], "s", "body", [], "", "INBOX")
+    assert msg["To"] == "a@x.com, b@y.com" and msg["Cc"] is None
+
+
+def test_damaged_history_and_rule_files_do_not_crash(tmp_path):
+    from elen.guard import AllowRules
+    from elen.history import History
+
+    (tmp_path / "h.json").write_text('["not", "an", "object"]')
+    h = History(tmp_path / "h.json")
+    assert h.transcript == [] and h.summary == ""
+    (tmp_path / "r.json").write_text('{"tool": "x"}')
+    rules = AllowRules(tmp_path / "r.json")
+    assert rules.rules == [] and rules.match("x", {}) is None

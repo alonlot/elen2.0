@@ -2,7 +2,7 @@ import json
 
 import httpx
 
-from elen.config import DEFAULTS, deep_merge
+from elen.config import DEFAULTS
 from elen.llm import make_provider
 from elen.llm.openai_provider import OpenAICompatProvider
 from elen.llm.prompt_tools import PromptToolsAdapter, parse_tool_calls, to_plain_messages

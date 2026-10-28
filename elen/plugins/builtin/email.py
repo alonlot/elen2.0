@@ -52,6 +52,13 @@ def body_text(msg: email.message.EmailMessage) -> str:
     return html_to_text(content) if part.get_content_type() == "text/html" else content.strip()
 
 
+def addresses(value: Any) -> str:
+    """One header value from what a model wrote: a string, or a list of addresses."""
+    if isinstance(value, (list, tuple)):
+        return ", ".join(str(v).strip() for v in value if str(v).strip())
+    return str(value or "").strip()
+
+
 def imap_utf7(name: str) -> str:
     """Folder name in IMAP modified UTF-7 (RFC 3501 5.1.3): "Entwürfe" -> "Entw&APw-rfe".
     imaplib sends ASCII only, so a non-ASCII name would raise UnicodeEncodeError."""
@@ -119,7 +126,8 @@ class EmailPlugin(Plugin):
         self.accounts = {a.name: a for a in (Account(c) for c in self.config.get("accounts", []))}
         if not self.accounts:
             raise RuntimeError("no [[plugins.email.accounts]] configured")
-        self._seen_addresses: set[str] = set()
+        # Per account: the unread uids already seen by watch(), None before the first good check.
+        self._seen_uids: dict[str, set[str] | None] = {}
 
     def prompt_hint(self) -> str:
         names = ", ".join(f"{a.name} <{a.address}>" for a in self.accounts.values())
@@ -136,7 +144,12 @@ class EmailPlugin(Plugin):
         return vips
 
     async def watch(self, now) -> list[Notice]:
-        """New unread mail from VIP senders (contacts with vip = true, or [proactive] vip_senders)."""
+        """New unread mail from VIP senders (contacts with vip = true, or [proactive] vip_senders).
+
+        The first check of an account that works only remembers the mail that is there, so old
+        unread mail is not announced after a restart. The baseline is kept per account and only
+        after a check that worked: a failed first check (server down at login) must not turn
+        the old mail into "new" at the next check."""
         if not self.ctx.setting("proactive", "mail_watch", default=True):
             return []
         every = float(self.ctx.setting("proactive", "mail_check_minutes", default=5)) * 60
@@ -154,7 +167,15 @@ class EmailPlugin(Plugin):
             except Exception as e:  # noqa: BLE001
                 self.log.warning("mail check of %s failed: %s", acc.name, e)
                 continue
+            seen_uids = self._seen_uids.setdefault(acc.name, None)
+            first = seen_uids is None
+            uids = {m["uid"] for m in items}
+            self._seen_uids[acc.name] = uids if first else (seen_uids | uids)
+            if first:
+                continue
             for m in items:
+                if m["uid"] in seen_uids:
+                    continue
                 name, addr = email.utils.parseaddr(m["from"])
                 if addr.lower() not in vips:
                     continue
@@ -162,7 +183,6 @@ class EmailPlugin(Plugin):
                     Notice(
                         key=f"mail:{acc.name}:{m['uid']}",
                         text=f"New mail from {name or addr}: {m['subject'] or '(no subject)'}",
-                        baseline=True,  # after a restart, do not announce mail that was already there
                     )
                 )
         return notices
@@ -241,12 +261,12 @@ class EmailPlugin(Plugin):
             except Exception:  # noqa: BLE001
                 pass
 
-    def _build(self, acc: Account, to: str, subject: str, body: str, cc: str, reply_to_uid: str, folder: str) -> EmailMessage:
+    def _build(self, acc: Account, to: Any, subject: str, body: str, cc: Any, reply_to_uid: str, folder: str) -> EmailMessage:
         msg = EmailMessage()
         msg["From"] = email.utils.formataddr((acc.cfg.get("display_name", ""), acc.address))
-        msg["To"] = to
-        if cc:
-            msg["Cc"] = cc
+        msg["To"] = addresses(to)
+        if addresses(cc):
+            msg["Cc"] = addresses(cc)
         msg["Subject"] = subject
         msg["Date"] = email.utils.formatdate(localtime=True)
         msg["Message-ID"] = email.utils.make_msgid(domain=acc.address.split("@")[-1] or None)
@@ -383,7 +403,7 @@ class EmailPlugin(Plugin):
         acc = self.account(account)
         msg = await asyncio.to_thread(self._build, acc, to, subject, body, cc, reply_to_uid, folder or "INBOX")
         await asyncio.to_thread(self._send, acc, msg)
-        return {"sent": True, "from": acc.address, "to": to, "cc": cc, "subject": subject}
+        return {"sent": True, "from": acc.address, "to": addresses(to), "cc": addresses(cc), "subject": subject}
 
     @tool(
         "Save an email as a draft in the Drafts folder (it is not sent).",

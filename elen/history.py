@@ -33,14 +33,17 @@ class History:
     def load(self) -> None:
         try:
             data = json.loads(self.path.read_text(encoding="utf-8"))
-            self.display = data.get("display", [])
-            self.transcript = data.get("transcript", [])
-            self.visuals = data.get("visuals", {})
-            self.summary = data.get("summary", "")
-            self.summary_untrusted = data.get("summary_untrusted", False)
-            self.summarized = data.get("summarized", 0)
-        except (OSError, ValueError):
+            if not isinstance(data, dict):
+                raise ValueError("history file is not a JSON object")
+            self.display = list(data.get("display") or [])
+            self.transcript = list(data.get("transcript") or [])
+            self.visuals = dict(data.get("visuals") or {})
+            self.summary = str(data.get("summary") or "")
+            self.summary_untrusted = bool(data.get("summary_untrusted", False))
+            self.summarized = int(data.get("summarized") or 0)
+        except (OSError, ValueError, TypeError):
             self.display, self.transcript, self.visuals = [], [], {}
+            self.summary, self.summary_untrusted, self.summarized = "", False, 0
 
     def save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)

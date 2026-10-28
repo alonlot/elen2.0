@@ -111,7 +111,9 @@ class VoskEngine:
             return True
         if self.use_partial:
             # Faster: react while the user is still speaking. A little less strict.
-            return self._hit(json.loads(self.rec.PartialResult()).get("partial", ""))
+            if self._hit(json.loads(self.rec.PartialResult()).get("partial", "")):
+                self.tail = b""  # the words after the phrase are still coming: record them normally
+                return True
         return False
 
     def reset(self) -> None:

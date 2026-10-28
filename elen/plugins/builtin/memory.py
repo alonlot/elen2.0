@@ -59,7 +59,8 @@ class MemoryPlugin(Plugin):
         brain = self.ctx.setting("brain", default={}) or {}
         if not emb_cfg.get("base_url") and brain.get("provider", "openai_compatible") not in ("anthropic", "claude"):
             emb_cfg["base_url"] = brain.get("base_url", "")
-            emb_cfg.setdefault("api_key", brain.get("api_key", ""))
+            if not emb_cfg.get("api_key"):  # the default config has an empty key, not a missing one
+                emb_cfg["api_key"] = brain.get("api_key", "")
         self.embedder = Embedder(emb_cfg)
         self.vec_path = self.ctx.data_dir / "vectors.json"
         try:

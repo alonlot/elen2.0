@@ -279,8 +279,18 @@ class CalendarPlugin(Plugin):
             return {"created": False, "error": "No writable CalDAV calendar is configured."}
         src = next((s for s in srcs if s.get("default")), srcs[0])
         tz = local_tz()
-        dt_start = datetime.fromisoformat(start).replace(tzinfo=tz) if "T" in start else None
-        dt_end = datetime.fromisoformat(end).replace(tzinfo=tz) if "T" in end else None
+
+        def parse(value: str) -> datetime | None:
+            try:
+                dt = datetime.fromisoformat(str(value).strip())
+            except ValueError:
+                return None
+            if "T" not in str(value) and " " not in str(value).strip():
+                return None  # a date without a time
+            # A time without an offset is local time; an explicit offset is kept as given.
+            return dt if dt.tzinfo is not None else dt.replace(tzinfo=tz)
+
+        dt_start, dt_end = parse(start), parse(end)
         if not dt_start or not dt_end or dt_end <= dt_start:
             return {"created": False, "error": "start and end must be YYYY-MM-DDTHH:MM and end after start."}
 

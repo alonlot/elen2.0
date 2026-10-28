@@ -137,9 +137,12 @@ class AllowRules:
     def __init__(self, path: Path):
         self.path = path
         try:
-            self.rules: list[dict[str, Any]] = json.loads(path.read_text())
+            rules = json.loads(path.read_text())
         except (OSError, ValueError):
-            self.rules = []
+            rules = []
+        self.rules: list[dict[str, Any]] = [
+            r for r in (rules if isinstance(rules, list) else []) if isinstance(r, dict) and "tool" in r
+        ]
 
     def _save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)

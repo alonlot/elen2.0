@@ -75,11 +75,14 @@ class Recorder:
         self._stop.set()
 
     async def record(self, out: Path) -> Path:
+        # `active` is set only once the recorder runs: if the command is missing or fails to
+        # start, the flag must not stay on (the mic button would then only ever "stop").
+        cmd = self.command()
+        proc = await asyncio.create_subprocess_exec(
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL
+        )
         self._stop = asyncio.Event()
         self.active = True
-        proc = await asyncio.create_subprocess_exec(
-            *self.command(), stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL
-        )
         frames = bytearray()
         threshold = float(self.cfg.get("silence_threshold", 600))
         silence_needed = float(self.cfg.get("silence_seconds", 1.5))

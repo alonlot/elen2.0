@@ -171,7 +171,9 @@ class ServerPlugin(Plugin):
 - The text appears in the chat (and at the bottom of the screen when the chat is closed), the
   visual on screen, and the text is spoken outside quiet hours.
 - `baseline=True`: on the first check after Elen starts, the key is only remembered (use it for
-  "new mail", so old unread mail is not announced after a restart).
+  "new mail", so old unread mail is not announced after a restart). The first check is the
+  first `watch()` call that returns without an exception: when your lookup fails, raise (or
+  return the error) instead of returning `[]`, or the next check announces everything as new.
 - `watch()` runs about once a minute: cache slow lookups.
 
 ## 8. A full example: send a message to a chat server

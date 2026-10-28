@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import ScriptedProvider, say
+from conftest import say
 from elen.wake import WakeListener
 
 

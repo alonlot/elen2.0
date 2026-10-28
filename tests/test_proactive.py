@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 
-from conftest import ScriptedProvider, say
+from conftest import say
 from elen.plugins import Notice, Plugin, PluginContext
 from elen.proactive import Proactive, in_window, parse_hhmm
 
@@ -84,9 +84,33 @@ async def test_vip_mail_watch(make_core, env):
 
     mail = EmailPlugin({"accounts": [{"name": "w", "address": "me@x.io", "imap_host": "h"}]}, PluginContext(core, "email", core.data_dir))
     await mail.setup()
-    mail._fetch_headers = lambda acc, folder, crit, limit: [
+    inbox = [{"uid": "6", "from": "Dana <dana@example.com>", "subject": "Old", "unread": True}]
+    mail._fetch_headers = lambda acc, folder, crit, limit: list(inbox)
+    assert await mail.watch(datetime.now()) == []  # the first good check only remembers what is there
+    inbox += [
         {"uid": "7", "from": "Dana <dana@example.com>", "subject": "Budget", "unread": True},
         {"uid": "8", "from": "spam@ads.com", "subject": "Win", "unread": True},
     ]
+    mail._last_mail_check = 0
     notices = await mail.watch(datetime.now())
-    assert [n.text for n in notices] == ["New mail from Dana: Budget"] and notices[0].baseline
+    assert [n.text for n in notices] == ["New mail from Dana: Budget"]
+
+
+async def test_vip_mail_failed_first_check_is_not_a_baseline(make_core, env):
+    (env / "cfg" / "contacts.toml").write_text('[[contact]]\nname = "Dana"\nemails = ["dana@example.com"]\nvip = true\n')
+    core = await make_core([])
+    from elen.plugins.builtin.email import EmailPlugin
+
+    mail = EmailPlugin({"accounts": [{"name": "w", "address": "me@x.io", "imap_host": "h"}]}, PluginContext(core, "email", core.data_dir))
+    await mail.setup()
+
+    def down(acc, folder, crit, limit):
+        raise OSError("server down")
+
+    mail._fetch_headers = down
+    assert await mail.watch(datetime.now()) == []
+    mail._fetch_headers = lambda acc, folder, crit, limit: [
+        {"uid": "6", "from": "Dana <dana@example.com>", "subject": "Old", "unread": True},
+    ]
+    mail._last_mail_check = 0
+    assert await mail.watch(datetime.now()) == []  # old mail after an outage is not "new"

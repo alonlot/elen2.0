@@ -144,7 +144,12 @@ class OpenAICompatProvider:
             raise LLMError(f"Cannot reach {self.base_url}: {e}") from e
         if r.status_code >= 400:
             raise LLMError(f"Model API error {r.status_code}: {r.text[:500]}")
-        data = r.json()
+        try:
+            data = r.json()
+        except ValueError as e:
+            raise LLMError(f"{self.base_url} did not answer with JSON: {r.text[:200]!r}") from e
+        if not isinstance(data, dict):
+            raise LLMError(f"{self.base_url} sent an unexpected answer: {r.text[:200]!r}")
         choice = (data.get("choices") or [{}])[0]
         msg = choice.get("message") or {}
         calls = []

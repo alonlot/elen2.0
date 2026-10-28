@@ -37,7 +37,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
-from .config import config_dir, data_dir, deep_merge, load_config
+from .config import config_dir, data_dir, load_config
 from .guard import AllowRules, Confirmation, Guard
 from .history import History
 from .llm import LLMError, ToolCall, make_provider
@@ -80,6 +80,35 @@ TAINT_WARNING = (
     "Elen read outside content (mail, calendar, screen, files or command output) in this "
     "conversation. Outside content can contain hidden instructions. Check that YOU asked for this."
 )
+
+
+def coerce_arg(value: Any, schema: dict[str, Any]) -> Any:
+    """Turn the text a model wrote into the type the tool expects.
+
+    Models, above all small ones with prompt-based tools, send "false", "10" or "1.5" as strings.
+    Python treats the string "false" as true, so a wrong flag would go unnoticed."""
+    kind = schema.get("type") if isinstance(schema, dict) else None
+    if kind == "boolean" and isinstance(value, str):
+        text = value.strip().lower()
+        if text in ("true", "yes", "on", "1"):
+            return True
+        if text in ("false", "no", "off", "0", ""):
+            return False
+    elif kind == "integer" and isinstance(value, (str, float)) and not isinstance(value, bool):
+        try:
+            number = float(value)
+            if number.is_integer():
+                return int(number)
+        except (TypeError, ValueError):
+            pass
+    elif kind == "number" and isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            pass
+    elif kind == "array" and isinstance(value, str):
+        return [p.strip() for p in value.split(",") if p.strip()]
+    return value
 
 
 def parse_check(text: str) -> dict[str, Any] | None:
@@ -193,6 +222,10 @@ class Elen:
         brain = dict(self.config["brain"])
         own = {k: v for k, v in (self.config.get(section) or {}).items() if v not in ("", None)}
         if own.get("provider"):
+            if str(own["provider"]).lower() != str(brain.get("provider") or "").lower():
+                # Another provider: the brain's model, URL and key belong to a different API.
+                for key in ("model", "base_url", "api_key", "headers", "extra_body"):
+                    brain.pop(key, None)
             return {**brain, "effort": "", "fallbacks": False, "tool_mode": "auto", **own}
         if section == "checker" and brain.get("effort"):
             brain["effort"] = "low"
@@ -666,6 +699,8 @@ class Elen:
         unknown = [k for k in args if k not in props]
         for k in unknown:
             args.pop(k)
+        for k, v in list(args.items()):
+            args[k] = coerce_arg(v, props[k])
         missing = [k for k in spec.parameters.get("required", []) if k not in args]
         if missing:
             return reply({"error": f"Missing required arguments: {', '.join(missing)}"}, True)

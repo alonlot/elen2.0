@@ -118,6 +118,11 @@ class Speaker:
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.DEVNULL,
         )
+        if self._stopped:
+            # stop() ran while the command was starting: it could not see this process yet.
+            self._proc.terminate()
+            await self._proc.wait()
+            return
         if not uses_arg:
             self._proc.stdin.write(text.encode())
             await self._proc.stdin.drain()
