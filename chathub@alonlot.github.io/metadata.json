@@ -1,0 +1,9 @@
+{
+  "uuid": "chathub@alonlot.github.io",
+  "name": "Chat Hub",
+  "description": "All your chats in the top panel: contacts, chat history, messages and calls. Add networks (Jabber/XMPP, your own service) with a small provider API or a D-Bus backend in any language.",
+  "shell-version": ["45", "46", "47", "48"],
+  "settings-schema": "org.gnome.shell.extensions.chathub",
+  "url": "https://github.com/alonlot/elen2.0/tree/chat-hub-extension",
+  "version": 1
+}

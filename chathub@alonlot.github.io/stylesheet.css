@@ -1,0 +1,306 @@
+/* Chat Hub. Dark glass card, violet-to-blue accent.
+ *   surface   #16171f   raised  #1e2029   line  rgba(255,255,255,0.07)
+ *   text      #eceef5   muted   #8b90a5
+ *   accent    #7c5cff -> #3a8dff
+ *   online #3ddc97  busy #ff5c7a  away #ffb547  offline #5d6275
+ */
+
+/* ---------- panel ---------- */
+.chathub-panel-box { spacing: 4px; }
+.chathub-panel-icon.unread { color: #b9a8ff; }
+.chathub-panel-badge {
+  background-color: #ff4f6d; color: #ffffff;
+  font-size: 8pt; font-weight: 800;
+  min-width: 16px; height: 16px; padding: 0 5px;
+  border-radius: 8px; text-align: center;
+}
+.chathub-panel-call {
+  spacing: 5px; padding: 1px 9px; border-radius: 99px;
+  background-gradient-direction: horizontal;
+  background-gradient-start: #1fbf7c; background-gradient-end: #18a3a0;
+  color: #ffffff;
+}
+.chathub-panel-call.ringing-in, .chathub-panel-call.ringing-out {
+  background-gradient-start: #7c5cff; background-gradient-end: #3a8dff;
+}
+.chathub-panel-call-text { font-size: 9pt; font-weight: bold; font-feature-settings: "tnum"; }
+
+/* ---------- window ---------- */
+.chathub-popup .popup-menu-content {
+  background-color: #14151c;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 22px;
+  padding: 0;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.55);
+}
+.chathub-popup .popup-menu-arrow { color: transparent; }
+.chathub-item, .chathub-item:hover, .chathub-item:focus, .chathub-item:active {
+  background-color: transparent; padding: 0; margin: 0; spacing: 0;
+}
+.chathub-window { width: 800px; height: 580px; }
+
+/* ---------- sidebar ---------- */
+.chathub-sidebar {
+  width: 290px;
+  background-color: rgba(255, 255, 255, 0.025);
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 22px 0 0 22px;
+  padding: 16px 10px 10px 10px;
+  spacing: 10px;
+}
+.chathub-me { spacing: 12px; padding: 2px 6px 4px 6px; }
+.chathub-me-text { spacing: 1px; }
+.chathub-me-name { font-weight: 800; font-size: 11.5pt; color: #eceef5; }
+.chathub-presence-button {
+  padding: 2px 8px 2px 0; border-radius: 99px; color: #8b90a5;
+}
+.chathub-presence-button:hover, .chathub-presence-button:focus { background-color: rgba(255, 255, 255, 0.07); color: #eceef5; }
+.chathub-presence-button-box { spacing: 6px; }
+.chathub-presence-label { font-size: 9pt; }
+.chathub-presence-arrow { color: #8b90a5; }
+
+.chathub-presence-picker {
+  spacing: 4px; padding: 4px; border-radius: 14px;
+  background-color: rgba(255, 255, 255, 0.05);
+}
+.chathub-presence-choice { padding: 6px 4px; border-radius: 10px; color: #c9ccda; }
+.chathub-presence-choice:hover, .chathub-presence-choice:focus { background-color: rgba(124, 92, 255, 0.25); color: #ffffff; }
+.chathub-presence-choice-label { font-size: 8.5pt; margin-left: 5px; }
+
+.chathub-search {
+  border-radius: 12px; padding: 8px 12px;
+  background-color: rgba(255, 255, 255, 0.06);
+  border: 1px solid transparent;
+  color: #eceef5; caret-color: #9f87ff;
+  selection-background-color: #7c5cff;
+  margin: 0 4px;
+}
+.chathub-search:focus { border-color: rgba(124, 92, 255, 0.7); background-color: rgba(255, 255, 255, 0.08); }
+.chathub-search StLabel.hint-text { color: #6d7186; }
+.chathub-search-icon { color: #6d7186; padding-right: 6px; }
+
+.chathub-contact-list { spacing: 2px; padding: 0 4px; }
+.chathub-contact {
+  border-radius: 14px; padding: 8px 10px;
+  transition-duration: 120ms;
+}
+.chathub-contact:hover, .chathub-contact:focus { background-color: rgba(255, 255, 255, 0.05); }
+.chathub-contact.active {
+  background-gradient-direction: horizontal;
+  background-gradient-start: rgba(124, 92, 255, 0.30);
+  background-gradient-end: rgba(58, 141, 255, 0.14);
+}
+.chathub-contact-box { spacing: 12px; }
+.chathub-contact-text { spacing: 3px; }
+.chathub-contact-name { font-weight: bold; font-size: 10.5pt; color: #eceef5; }
+.chathub-contact-time { font-size: 8pt; color: #6d7186; margin-left: 6px; }
+.chathub-contact.unread .chathub-contact-time { color: #a893ff; font-weight: bold; }
+.chathub-contact-preview { font-size: 9pt; color: #8b90a5; }
+.chathub-contact.unread .chathub-contact-preview { color: #d6d8e4; }
+.chathub-contact-preview.typing { color: #9f87ff; font-style: italic; }
+.chathub-badge {
+  min-width: 18px; height: 18px; padding: 0 5px; margin-left: 6px;
+  border-radius: 9px; text-align: center;
+  font-size: 8pt; font-weight: 800; color: #ffffff;
+  background-gradient-direction: horizontal;
+  background-gradient-start: #7c5cff; background-gradient-end: #3a8dff;
+}
+.chathub-list-empty { color: #6d7186; font-size: 9.5pt; padding: 40px 12px; }
+
+.chathub-accounts { spacing: 6px; padding: 6px 6px 0 6px; border-top: 1px solid rgba(255, 255, 255, 0.05); }
+.chathub-account-chip {
+  spacing: 6px; padding: 3px 9px; border-radius: 99px;
+  background-color: rgba(255, 255, 255, 0.05);
+}
+.chathub-account-name { font-size: 8pt; color: #8b90a5; }
+.chathub-state-dot { border-radius: 3px; background-color: #5d6275; }
+.chathub-state-dot.connected { background-color: #3ddc97; }
+.chathub-state-dot.connecting { background-color: #ffb547; }
+.chathub-state-dot.error { background-color: #ff5c7a; }
+
+/* ---------- avatars & presence ---------- */
+.chathub-avatar-initials { color: #ffffff; font-weight: 800; }
+.chathub-presence-dot { border: 2.5px solid #191a22; background-color: #5d6275; }
+.chathub-presence-dot.small { border-width: 0; border-radius: 4px; }
+.chathub-presence-dot.online { background-color: #3ddc97; }
+.chathub-presence-dot.busy { background-color: #ff5c7a; }
+.chathub-presence-dot.away { background-color: #ffb547; }
+.chathub-presence-dot.offline { background-color: #5d6275; }
+
+/* ---------- conversation ---------- */
+.chathub-main { border-radius: 0 22px 22px 0; }
+.chathub-content { padding: 0; }
+
+.chathub-empty { spacing: 10px; }
+.chathub-empty-art {
+  width: 96px; height: 96px; border-radius: 48px; margin-bottom: 8px;
+  color: #ffffff;
+  background-gradient-direction: vertical;
+  background-gradient-start: #7c5cff; background-gradient-end: #3a8dff;
+  box-shadow: 0 10px 30px rgba(124, 92, 255, 0.45);
+}
+.chathub-empty-title { font-size: 15pt; font-weight: 800; color: #eceef5; }
+.chathub-empty-text { font-size: 10pt; color: #8b90a5; }
+
+.chathub-header {
+  spacing: 12px; padding: 14px 16px 12px 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.chathub-header-text { spacing: 2px; }
+.chathub-header-name { font-weight: 800; font-size: 12pt; color: #eceef5; }
+.chathub-header-status { font-size: 8.5pt; color: #8b90a5; }
+.chathub-header-status.typing { color: #9f87ff; font-style: italic; }
+
+.chathub-icon-button {
+  padding: 8px; border-radius: 99px; color: #c3c6d6;
+  transition-duration: 120ms;
+}
+.chathub-icon-button:hover, .chathub-icon-button:focus { background-color: rgba(255, 255, 255, 0.08); color: #ffffff; }
+.chathub-icon-button:active { background-color: rgba(255, 255, 255, 0.14); }
+.chathub-icon-button.round { padding: 10px; background-color: rgba(255, 255, 255, 0.05); }
+.chathub-icon-button.round:hover { background-color: rgba(124, 92, 255, 0.30); }
+.chathub-icon-button.danger, .chathub-icon-button.danger:hover {
+  background-color: rgba(255, 92, 122, 0.85); color: #ffffff;
+}
+.chathub-icon-button.composer { padding: 9px; color: #8b90a5; }
+
+/* call bar inside the conversation */
+.chathub-callbar {
+  spacing: 10px; padding: 7px 10px 7px 16px; margin: 10px 14px 0 14px; border-radius: 14px;
+  color: #ffffff;
+  background-gradient-direction: horizontal;
+  background-gradient-start: #7c5cff; background-gradient-end: #3a8dff;
+}
+.chathub-callbar.active { background-gradient-start: #1fbf7c; background-gradient-end: #18a3a0; }
+.chathub-callbar-text { font-weight: bold; font-size: 9.5pt; font-feature-settings: "tnum"; }
+
+/* messages */
+.chathub-messages { padding: 12px 18px 6px 18px; spacing: 2px; }
+.chathub-day { margin: 12px 0 8px 0; }
+.chathub-day-label {
+  font-size: 8pt; font-weight: bold; color: #9a9eb2;
+  padding: 3px 12px; border-radius: 99px;
+  background-color: rgba(255, 255, 255, 0.05);
+}
+.chathub-row { margin-top: 8px; }
+.chathub-row.grouped { margin-top: 2px; }
+.chathub-bubble {
+  max-width: 360px; padding: 8px 12px 6px 13px;
+  border-radius: 18px;
+  transition-duration: 100ms;
+}
+.chathub-bubble.in {
+  background-color: #23252f; color: #e6e8f0;
+  border-radius: 18px 18px 18px 6px;
+}
+.chathub-bubble.in:hover { background-color: #2a2c37; }
+.chathub-bubble.out {
+  color: #ffffff;
+  border-radius: 18px 18px 6px 18px;
+  background-gradient-direction: horizontal;
+  background-gradient-start: #7356f5; background-gradient-end: #3a85f5;
+}
+.chathub-bubble.out:hover { background-gradient-start: #7f63ff; background-gradient-end: #4b90ff; }
+.chathub-row.grouped .chathub-bubble.in { border-radius: 6px 18px 18px 6px; }
+.chathub-row.grouped .chathub-bubble.out { border-radius: 18px 6px 6px 18px; }
+.chathub-bubble.call {
+  background-gradient-direction: none; background-color: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08); color: #b7bacb;
+}
+.chathub-bubble.failed {
+  background-gradient-direction: none; background-color: rgba(255, 92, 122, 0.18);
+  border: 1px solid rgba(255, 92, 122, 0.6);
+}
+.chathub-bubble-text { font-size: 10.5pt; }
+.chathub-bubble-meta { spacing: 4px; margin-top: 2px; }
+.chathub-bubble-time { font-size: 7.5pt; color: rgba(255, 255, 255, 0.5); }
+.chathub-ticks { font-size: 7.5pt; color: rgba(255, 255, 255, 0.6); font-weight: bold; }
+.chathub-ticks.read { color: #8fe3ff; }
+.chathub-ticks.failed { color: #ffd0d8; }
+
+.chathub-load-more {
+  font-size: 8.5pt; color: #a893ff; padding: 5px 14px; border-radius: 99px;
+  background-color: rgba(124, 92, 255, 0.12); margin-bottom: 6px;
+}
+.chathub-load-more:hover { background-color: rgba(124, 92, 255, 0.25); }
+
+.chathub-hello { spacing: 12px; padding-top: 110px; }
+.chathub-hello-text { font-size: 11pt; color: #8b90a5; }
+
+.chathub-typing { font-size: 8.5pt; color: #9f87ff; font-style: italic; padding: 0 22px 2px 22px; height: 16px; }
+
+/* emoji */
+.chathub-emoji-panel {
+  margin: 0 14px; padding: 6px; border-radius: 14px;
+  background-color: #1e2029; border: 1px solid rgba(255, 255, 255, 0.06);
+}
+.chathub-emoji { font-size: 15pt; padding: 4px; border-radius: 10px; }
+.chathub-emoji:hover, .chathub-emoji:focus { background-color: rgba(255, 255, 255, 0.1); }
+
+/* composer */
+.chathub-composer {
+  spacing: 6px; margin: 6px 14px 14px 14px; padding: 4px 4px 4px 4px;
+  border-radius: 99px;
+  background-color: #1e2029;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
+.chathub-entry {
+  background-color: transparent; border: none; box-shadow: none;
+  color: #eceef5; caret-color: #9f87ff; padding: 8px 4px;
+  selection-background-color: #7c5cff;
+  font-size: 10.5pt;
+}
+.chathub-entry:focus { background-color: transparent; border: none; box-shadow: none; }
+.chathub-entry StLabel.hint-text { color: #6d7186; }
+.chathub-send {
+  width: 38px; height: 38px; border-radius: 19px; color: #ffffff;
+  background-gradient-direction: horizontal;
+  background-gradient-start: #7c5cff; background-gradient-end: #3a8dff;
+  transition-duration: 120ms;
+}
+.chathub-send:hover, .chathub-send:focus { box-shadow: 0 0 14px rgba(124, 92, 255, 0.6); }
+.chathub-send:active { background-gradient-start: #6a4ae8; background-gradient-end: #2f7be6; }
+
+/* toast inside the window */
+.chathub-toast {
+  margin-bottom: 78px; padding: 8px 16px; border-radius: 99px;
+  background-color: rgba(40, 42, 54, 0.97); color: #eceef5; font-size: 9pt;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+}
+
+/* ---------- call buttons ---------- */
+.chathub-call-btn {
+  width: 48px; height: 48px; border-radius: 24px;
+  background-color: rgba(255, 255, 255, 0.12); color: #ffffff;
+  transition-duration: 120ms;
+}
+.chathub-call-btn:hover, .chathub-call-btn:focus { background-color: rgba(255, 255, 255, 0.22); }
+.chathub-call-btn.toggled { background-color: #ffffff; color: #14151c; }
+.chathub-call-btn.accept { background-color: #22c77f; }
+.chathub-call-btn.accept:hover { background-color: #2fdb90; box-shadow: 0 0 16px rgba(34, 199, 127, 0.6); }
+.chathub-call-btn.hangup { background-color: #ff4f6d; }
+.chathub-call-btn.hangup:hover { background-color: #ff6680; box-shadow: 0 0 16px rgba(255, 79, 109, 0.6); }
+.chathub-call-btn.small { width: 30px; height: 30px; border-radius: 15px; }
+.chathub-callbar .chathub-call-btn { background-color: rgba(255, 255, 255, 0.2); }
+.chathub-callbar .chathub-call-btn.hangup { background-color: #ff4f6d; }
+.chathub-callbar .chathub-call-btn.accept { background-color: #22c77f; }
+.chathub-callbar .chathub-call-btn.toggled { background-color: #ffffff; color: #14151c; }
+
+/* ---------- floating call window ---------- */
+.chathub-call-window {
+  min-width: 340px; padding: 16px 18px 16px 18px; spacing: 14px;
+  border-radius: 26px;
+  background-color: rgba(20, 21, 28, 0.97);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
+}
+.chathub-call-window.ringing-in { border-color: rgba(34, 199, 127, 0.7); box-shadow: 0 0 32px rgba(34, 199, 127, 0.35); }
+.chathub-call-window.ringing-out { border-color: rgba(124, 92, 255, 0.7); }
+.chathub-call-top { spacing: 14px; }
+.chathub-call-avatar-btn { border-radius: 99px; padding: 0; }
+.chathub-call-texts { spacing: 2px; }
+.chathub-call-name { font-size: 13pt; font-weight: 800; color: #eceef5; }
+.chathub-call-state { font-size: 9.5pt; color: #8b90a5; font-feature-settings: "tnum"; }
+.chathub-call-window.active .chathub-call-state { color: #3ddc97; }
+.chathub-call-buttons { spacing: 18px; }

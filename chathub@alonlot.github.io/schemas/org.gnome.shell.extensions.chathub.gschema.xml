@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.chathub" path="/org/gnome/shell/extensions/chathub/">
+    <key name="display-name" type="s">
+      <default>''</default>
+      <summary>Your name</summary>
+      <description>Shown on your profile card. Empty means your system user name.</description>
+    </key>
+    <key name="avatar-path" type="s">
+      <default>''</default>
+      <summary>Your picture</summary>
+      <description>Path to an image file. Empty means initials.</description>
+    </key>
+    <key name="presence" type="s">
+      <choices>
+        <choice value="online"/>
+        <choice value="busy"/>
+        <choice value="away"/>
+        <choice value="offline"/>
+      </choices>
+      <default>'online'</default>
+      <summary>Your presence on all accounts</summary>
+    </key>
+    <key name="providers" type="as">
+      <default>['demo']</default>
+      <summary>In-process providers to start</summary>
+      <description>Type names registered in providers/index.js.</description>
+    </key>
+    <key name="autostart-backends" type="b">
+      <default>true</default>
+      <summary>Start installed D-Bus backends</summary>
+      <description>Start D-Bus services whose name starts with io.github.alonlot.ChatHub.Backend.</description>
+    </key>
+    <key name="notifications" type="b">
+      <default>true</default>
+      <summary>Show a notification for new messages</summary>
+    </key>
+    <key name="sounds" type="b">
+      <default>true</default>
+      <summary>Play sounds for new messages and calls</summary>
+    </key>
+    <key name="history-limit" type="i">
+      <range min="50" max="20000"/>
+      <default>1000</default>
+      <summary>Messages to load per conversation</summary>
+    </key>
+    <key name="history-cleared-at" type="x">
+      <default>0</default>
+      <summary>Set by the settings window to delete all chat history</summary>
+    </key>
+    <key name="toggle-chat" type="as">
+      <default><![CDATA[['<Super><Alt>c']]]></default>
+      <summary>Open or close the chat window</summary>
+    </key>
+  </schema>
+</schemalist>
